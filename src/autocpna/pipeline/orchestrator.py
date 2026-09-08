@@ -12,6 +12,8 @@ from autocpna.content_gen.threads import ThreadsGenerator
 from autocpna.db import get_session
 from autocpna.ingestion.coupang_partners import CoupangPartnersClient
 from autocpna.ingestion.naver_datalab import NaverDatalabClient
+from autocpna.media_gen.image_generator import CHANNEL_IMAGE_SPECS
+from autocpna.media_gen.openai_image_generator import OpenAIImageGenerator
 from autocpna.models.content_draft import ContentDraft, ReviewStatus
 from autocpna.models.product import Product
 from autocpna.publish.base import Publisher
@@ -102,10 +104,17 @@ def generate_drafts(product: Product, channels: list[str] | None = None) -> list
         for channel in channels:
             generator = GENERATORS[channel]()
             text = generator.generate(product_dict)
+            image_path = ""
+            if channel == "instagram":
+                image_prompt = generator.build_image_prompt(product_dict)
+                image_path = OpenAIImageGenerator().generate(
+                    image_prompt, CHANNEL_IMAGE_SPECS["instagram_feed"]
+                )
             draft = ContentDraft(
                 product_id=product.id,
                 channel=channel,
                 caption_or_body=text,
+                image_path=image_path,
                 status=ReviewStatus.PENDING,
             )
             session.add(draft)
