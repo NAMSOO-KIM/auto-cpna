@@ -1,7 +1,7 @@
-"""최소 기능 검수 대시보드 (streamlit run dashboard/app.py).
+"""검수 대시보드 (streamlit run dashboard/app.py).
 
-목록 조회 + 이미지 미리보기 + 승인/반려만 지원. 편집 기능이 필요하면
-review_queue에 update 함수를 추가해 확장.
+목록 조회 + 이미지 미리보기 + 본문/해시태그 수정 + 승인/반려.
+승인·반려 버튼을 누르면 화면에 입력된 수정 내용을 먼저 저장한 뒤 상태를 바꾼다.
 """
 from __future__ import annotations
 
@@ -24,14 +24,32 @@ for draft in pending:
         st.subheader(f"#{draft.id} · {draft.channel}")
         if draft.image_path:
             st.image(draft.image_path, width=300)
-        st.text_area("본문", draft.caption_or_body, height=200, key=f"body_{draft.id}")
-        if draft.hashtags:
-            st.caption(draft.hashtags)
 
-        col1, col2, col3 = st.columns([1, 1, 3])
-        if col1.button("승인", key=f"approve_{draft.id}"):
+        body_key = f"body_{draft.id}"
+        hashtags_key = f"hashtags_{draft.id}"
+        st.text_area("본문", draft.caption_or_body, height=200, key=body_key)
+        st.text_input("해시태그", draft.hashtags, key=hashtags_key)
+
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
+
+        if col1.button("저장", key=f"save_{draft.id}"):
+            review_queue.update_content(
+                draft.id,
+                caption_or_body=st.session_state[body_key],
+                hashtags=st.session_state[hashtags_key],
+            )
+            st.success("저장됨")
+            st.rerun()
+
+        if col2.button("승인", key=f"approve_{draft.id}"):
+            review_queue.update_content(
+                draft.id,
+                caption_or_body=st.session_state[body_key],
+                hashtags=st.session_state[hashtags_key],
+            )
             review_queue.approve(draft.id)
             st.rerun()
-        if col2.button("반려", key=f"reject_{draft.id}"):
+
+        if col3.button("반려", key=f"reject_{draft.id}"):
             review_queue.reject(draft.id)
             st.rerun()

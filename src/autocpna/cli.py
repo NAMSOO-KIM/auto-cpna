@@ -79,6 +79,15 @@ def review_list() -> None:
         click.echo(f"#{draft.id} [{draft.channel}] {draft.caption_or_body[:60]}...")
 
 
+@review.command("edit")
+@click.argument("draft_id", type=int)
+@click.option("--body", default=None, help="본문 전체를 이 값으로 교체")
+@click.option("--hashtags", default=None, help="해시태그를 이 값으로 교체")
+def review_edit(draft_id: int, body: str | None, hashtags: str | None) -> None:
+    review_queue.update_content(draft_id, caption_or_body=body, hashtags=hashtags)
+    click.echo(f"#{draft_id} 수정됨")
+
+
 @review.command("approve")
 @click.argument("draft_id", type=int)
 @click.option("--note", default="")

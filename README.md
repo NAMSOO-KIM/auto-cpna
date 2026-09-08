@@ -74,7 +74,7 @@ autocpna review approve <draft_id>
 autocpna publish --draft-id <draft_id>
 ```
 
-검수는 CLI 대신 `streamlit run dashboard/app.py` 로 이미지+카피를 보면서 승인/반려할 수도 있습니다.
+검수는 CLI 대신 `streamlit run dashboard/app.py` 로 이미지+카피를 보면서 본문/해시태그를 직접 수정한 뒤 승인/반려할 수도 있습니다 (승인 버튼을 누르면 화면에 입력된 수정 내용이 먼저 저장됩니다). CLI에서는 `autocpna review edit <draft_id> --body "..." --hashtags "..."`로 동일하게 수정 가능합니다.
 
 ## 필요한 API 키 (.env)
 

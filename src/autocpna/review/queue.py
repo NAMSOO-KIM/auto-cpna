@@ -16,6 +16,25 @@ def list_pending() -> list[ContentDraft]:
         )
 
 
+def update_content(
+    draft_id: int,
+    caption_or_body: str | None = None,
+    hashtags: str | None = None,
+) -> ContentDraft:
+    """검수자가 발행 전 캡션/해시태그를 직접 수정할 때 사용. None인 필드는 유지."""
+    with get_session() as session:
+        draft = session.get(ContentDraft, draft_id)
+        if draft is None:
+            raise ValueError(f"draft {draft_id} not found")
+        if caption_or_body is not None:
+            draft.caption_or_body = caption_or_body
+        if hashtags is not None:
+            draft.hashtags = hashtags
+        session.commit()
+        session.refresh(draft)
+        return draft
+
+
 def approve(draft_id: int, note: str = "") -> ContentDraft:
     with get_session() as session:
         draft = session.get(ContentDraft, draft_id)
