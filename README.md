@@ -87,6 +87,7 @@ autocpna publish --draft-id <draft_id>
 ## 아직 구현되지 않은 부분 (다음 단계)
 
 - `ingestion/coupang_partners.py`, `ingestion/naver_datalab.py`: 인증 서명 로직은 구현되어 있으나 실제 응답 파싱은 API 문서 확정 후 채워야 함
+- **conversion_rate(전환율)**, **seasonality_fit(시의성)**: 아직 연결된 데이터 소스가 없음. conversion_rate는 자체 클릭/구매 로그가 쌓이기 전까지 `scoring_weights.yaml`의 `default_conversion_rate`로 대체되고, seasonality_fit은 0으로 고정되어 있음 — 실데이터 확보 전까지는 스코어에 반영되지 않는 항목으로 이해할 것
 - `media_gen/image_generator.py`: 이미지 생성 제공자 미확정 (플레이스홀더 인터페이스만 존재)
 - `publish/instagram_publisher.py`, `threads_publisher.py`: Graph API 호출 골격만 존재, 실제 토큰으로 테스트 필요
 - 대시보드는 최소 기능만 구현 (목록/승인/반려), 이미지 미리보기는 로컬 파일 경로 기준

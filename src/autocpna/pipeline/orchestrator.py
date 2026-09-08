@@ -11,6 +11,7 @@ from autocpna.content_gen.instagram import InstagramGenerator
 from autocpna.content_gen.threads import ThreadsGenerator
 from autocpna.db import get_session
 from autocpna.ingestion.coupang_partners import CoupangPartnersClient
+from autocpna.ingestion.naver_datalab import NaverDatalabClient
 from autocpna.models.content_draft import ContentDraft, ReviewStatus
 from autocpna.models.product import Product
 from autocpna.publish.base import Publisher
@@ -18,6 +19,7 @@ from autocpna.publish.instagram_publisher import InstagramPublisher
 from autocpna.publish.naver_blog_publisher import NaverBlogPublisher
 from autocpna.publish.threads_publisher import ThreadsPublisher
 from autocpna.scoring.engine import ScoringEngine
+from autocpna.scoring.normalize import normalize_search_volume, normalize_trend_momentum
 
 GENERATORS = {
     "instagram": InstagramGenerator,
@@ -33,8 +35,28 @@ PUBLISHERS: dict[str, Publisher] = {
 
 
 def collect_and_score(keyword: str = "", top_n: int = 20) -> list[Product]:
-    """상품 수집 -> 점수화 -> DB 저장, 상위 top_n 반환."""
+    """상품 수집(쿠팡파트너스) + 검색 트렌드(네이버 데이터랩) 병합 -> 점수화 -> DB 저장.
+
+    네이버 데이터랩은 상품 단위가 아니라 키워드 단위 트렌드만 제공하므로,
+    같은 keyword로 조회된 상품들은 동일한 search_volume/trend_momentum을 공유한다.
+    conversion_rate(자체 클릭 로그 필요)와 seasonality_fit(계절성 데이터 필요)은
+    아직 연결된 데이터 소스가 없어 0.0으로 남겨두고, 점수화 시 conversion_rate만
+    ScoringEngine의 카테고리 기본값으로 대체된다.
+    """
     raw_products = CoupangPartnersClient().fetch(keyword=keyword)
+
+    search_volume = 0.0
+    trend_momentum = 0.0
+    if keyword:
+        trend_results = NaverDatalabClient().fetch(keywords=[keyword])
+        if trend_results:
+            search_volume = normalize_search_volume(trend_results[0]["search_volume"])
+            trend_momentum = normalize_trend_momentum(trend_results[0]["trend_momentum"])
+
+    for product in raw_products:
+        product["search_volume"] = search_volume
+        product["trend_momentum"] = trend_momentum
+
     engine = ScoringEngine()
     ranked = engine.rank(raw_products, top_n=top_n)
 
@@ -47,6 +69,10 @@ def collect_and_score(keyword: str = "", top_n: int = 20) -> list[Product]:
                 category=data["category"],
                 price=data["price"],
                 margin_rate=data.get("margin_rate", 0.0),
+                search_volume=data.get("search_volume", 0.0),
+                trend_momentum=data.get("trend_momentum", 0.0),
+                conversion_rate=data.get("conversion_rate", 0.0),
+                seasonality_fit=data.get("seasonality_fit", 0.0),
                 product_url=data.get("product_url", ""),
                 image_url=data.get("image_url", ""),
                 score=breakdown.total,
