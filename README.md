@@ -58,8 +58,11 @@ cp .env.example .env  # API 키 채우기
 # 1) 상품 수집 + 점수화
 autocpna score
 
-# 2) 상위 N개 상품에 대해 채널별 콘텐츠 초안 생성
+# 2) 상위 N개 상품에 대해 채널별 콘텐츠 초안 생성 (인스타/스레드는 상품 단위, 블로그는 단일 리뷰)
 autocpna generate --top 10
+
+# 2b) 네이버 블로그용 'OO 추천 TOP N' 비교 콘텐츠 (기본 컨셉)
+autocpna generate-comparison --topic "무선 이어폰" --category "이어폰" --top 5
 
 # 3) 검수 대기열 확인
 autocpna review list

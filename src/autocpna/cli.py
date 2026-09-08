@@ -7,6 +7,7 @@ from autocpna.db import init_db
 from autocpna.models.product import Product
 from autocpna.pipeline.orchestrator import (
     collect_and_score,
+    generate_blog_comparison_draft,
     generate_drafts,
     publish_approved_draft,
 )
@@ -41,6 +42,30 @@ def generate(top_n: int) -> None:
         for product in products:
             drafts = generate_drafts(product)
             click.echo(f"{product.name}: {len(drafts)}개 초안 생성")
+
+
+@cli.command("generate-comparison")
+@click.option("--topic", required=True, help="비교 주제 (예: '무선 이어폰')")
+@click.option("--category", required=True, help="Product.category 필터 값")
+@click.option("--top", "top_n", default=5, help="비교에 포함할 상품 개수")
+def generate_comparison(topic: str, category: str, top_n: int) -> None:
+    """같은 카테고리 상위 상품들을 묶어 'OO 추천 TOP N' 블로그 초안 생성."""
+    from autocpna.db import get_session
+
+    with get_session() as session:
+        products = (
+            session.query(Product)
+            .filter(Product.category == category)
+            .order_by(Product.score.desc())
+            .limit(top_n)
+            .all()
+        )
+        if not products:
+            click.echo(f"카테고리 '{category}'에 저장된 상품이 없습니다. 먼저 score를 실행하세요.")
+            return
+
+    draft = generate_blog_comparison_draft(topic, products)
+    click.echo(f"비교 콘텐츠 초안 #{draft.id} 생성됨 ({len(products)}개 상품 비교)")
 
 
 @cli.group()

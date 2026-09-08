@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from autocpna.content_gen.base import ChannelGenerator
+from autocpna.content_gen.base import MODEL, ChannelGenerator
 
 
 class BlogGenerator(ChannelGenerator):
     channel = "naver_blog"
 
     def build_user_prompt(self, product: dict) -> str:
+        """비교 대상이 마땅치 않을 때 쓰는 단일 상품 리뷰용 프롬프트.
+        기본 컨셉은 build_comparison_prompt (추천 TOP N / 비교형) 사용."""
         return (
             f"다음 상품으로 네이버 블로그용 정보성 리뷰 글을 작성해줘.\n"
             f"상품명: {product['name']}\n"
@@ -19,3 +21,33 @@ class BlogGenerator(ChannelGenerator):
             f"- 본문 하단에 구매 링크와 제휴 고지 문구\n"
             f"- 1200~1800자 분량"
         )
+
+    def build_comparison_prompt(self, topic: str, products: list[dict]) -> str:
+        """'OO 추천 TOP N' / 비교형 콘텐츠 프롬프트. naver_blog 기본 포맷."""
+        items = "\n".join(
+            f"{i}. {p['name']} - {p['price']}원 (카테고리: {p['category']}, 링크: {p['product_url']})"
+            for i, p in enumerate(products, start=1)
+        )
+        return (
+            f"'{topic} 추천 TOP {len(products)}' 형식의 네이버 블로그 비교 글을 작성해줘.\n\n"
+            f"비교 대상 상품:\n{items}\n\n"
+            f"요구사항:\n"
+            f"- 도입부에서 독자가 '{topic}'을(를) 찾게 된 상황과 고민을 짚어준다\n"
+            f"- 상품마다 소제목을 나누고, 각 상품에 장점 / 단점 / 이런 분께 추천 을 명시\n"
+            f"- 가격·핵심 특징을 한눈에 비교하는 마크다운 표 포함 "
+            f"(| 상품명 | 가격 | 장점 | 이런 분께 |)\n"
+            f"- 순위를 매기되 '정답은 없고 상황에 따라 다르다'는 균형 잡힌 결론\n"
+            f"- 상품 소개마다 구매 링크 삽입, 본문 상단에 제휴 고지 문구\n"
+            f"- 1500~2200자 분량"
+        )
+
+    def generate_comparison(self, topic: str, products: list[dict]) -> str:
+        message = self._client.messages.create(
+            model=MODEL,
+            max_tokens=2048,
+            system=self._build_system_prompt(),
+            messages=[
+                {"role": "user", "content": self.build_comparison_prompt(topic, products)}
+            ],
+        )
+        return message.content[0].text

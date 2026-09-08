@@ -90,6 +90,41 @@ def generate_drafts(product: Product, channels: list[str] | None = None) -> list
     return drafts
 
 
+def generate_blog_comparison_draft(topic: str, products: list[Product]) -> ContentDraft:
+    """네이버 블로그용 'OO 추천 TOP N' 비교 콘텐츠 초안 생성.
+
+    ContentDraft.product_id는 단일 FK라 여러 상품을 모두 연결할 수 없으므로,
+    검수 시 참고용으로 대표 상품(첫 번째, 보통 최고 점수)에만 연결한다.
+    나머지 상품 정보는 caption_or_body 본문 안에 이미 포함되어 있다.
+    """
+    if not products:
+        raise ValueError("products가 비어 있습니다")
+
+    generator = BlogGenerator()
+    product_dicts = [
+        {
+            "name": p.name,
+            "category": p.category,
+            "price": p.price,
+            "product_url": p.product_url,
+        }
+        for p in products
+    ]
+    text = generator.generate_comparison(topic, product_dicts)
+
+    with get_session() as session:
+        draft = ContentDraft(
+            product_id=products[0].id,
+            channel="naver_blog",
+            caption_or_body=text,
+            status=ReviewStatus.PENDING,
+        )
+        session.add(draft)
+        session.commit()
+        session.refresh(draft)
+    return draft
+
+
 def publish_approved_draft(draft_id: int) -> None:
     """승인된 초안을 발행한다.
 
