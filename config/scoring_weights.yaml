@@ -1,0 +1,13 @@
+# 스코어링 엔진 가중치 (합이 1.0일 필요는 없음, 상대적 중요도)
+weights:
+  search_volume: 0.25       # 검색량 (네이버 데이터랩)
+  trend_momentum: 0.20      # 최근 트렌드 상승폭
+  margin_rate: 0.25         # 마진율 (쿠팡파트너스 커미션율)
+  conversion_rate: 0.20     # 과거 클릭 대비 전환율 (자체 로그, 없으면 카테고리 평균 사용)
+  seasonality_fit: 0.10     # 시의성 (계절/이벤트 적합도)
+
+# 카테고리별 전환율 데이터가 없을 때 사용할 기본값
+default_conversion_rate: 0.02
+
+# 최소 통과 기준 (이 밑이면 후보군에서 제외)
+min_score_threshold: 0.35

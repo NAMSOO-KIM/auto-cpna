@@ -1,0 +1,20 @@
+# 채널별 발행 정책
+# requires_review: true  -> 승인 후에도 자동 발행하지 않음 (초안만 생성, 수동 발행)
+# requires_review: false -> 승인 즉시 API로 자동 발행
+
+instagram:
+  enabled: true
+  requires_review: true   # 초기에는 승인 필요, 신뢰도 쌓이면 false로 전환 검토
+  format: "숏폼 캡션 + 해시태그"
+  max_hashtags: 15
+
+threads:
+  enabled: true
+  requires_review: true
+  format: "일상 고민 해결형 텍스트"
+
+naver_blog:
+  enabled: true
+  requires_review: true    # 항상 true 유지 (공식 자동 포스팅 API 없음, 어뷰징 정책 위험)
+  auto_publish: false      # 이 채널은 코드 레벨에서도 자동 발행 강제 차단
+  format: "정보성 리뷰 SEO 최적화"

@@ -1,0 +1,89 @@
+# auto-cpna
+
+쿠팡파트너스 + 네이버 쇼핑 연동 AI 소셜 커머스 콘텐츠 파이프라인.
+**완전 자동화가 아니라 "반자동(Human-in-the-loop)" 파이프라인**으로 설계되어 있습니다.
+발행 직전 사람의 승인 단계를 거치는 이유는 아래 "왜 반자동인가" 참고.
+
+## 데이터 흐름
+
+```mermaid
+flowchart LR
+    A[Ingestion\n쿠팡파트너스 API\n네이버 데이터랩] --> B[Scoring Engine\n점수화]
+    B --> C[Content Generation\n채널별 페르소나 프롬프트]
+    C --> D[Media Generation\n이미지 자동 생성]
+    D --> E[Review Queue\n사람 승인/수정]
+    E -->|approved| F[Publisher\n채널별 발행]
+    E -->|rejected| G[폐기/재생성]
+    F --> H[Publish Log / 성과 추적]
+```
+
+## 왜 반자동인가
+
+| 채널 | 발행 방식 | 이유 |
+|---|---|---|
+| Instagram / Threads | 승인 후 API 자동 발행 (`channels.yaml`에서 `requires_review` 조정 가능) | Meta Graph API가 비즈니스 계정 예약 발행을 공식 지원 |
+| 네이버 블로그 | **항상 초안만 생성, 발행은 수동** | 네이버는 공식 자동 포스팅 API가 없고, 자동화 도구로 올리면 어뷰징으로 계정 정지 위험이 큼 |
+
+`config/channels.yaml`의 `requires_review` 플래그로 채널별 자동/반자동 정책을 조정합니다.
+
+## 디렉터리 구조
+
+```
+config/                 페르소나, 채널 정책, 스코어링 가중치 (YAML)
+src/autocpna/
+  models/               DB 모델 (Product, ContentDraft, PublishLog)
+  ingestion/            외부 데이터 수집 (쿠팡파트너스, 네이버 데이터랩)
+  scoring/              점수화 엔진
+  content_gen/          채널별 AI 콘텐츠 생성 (Claude API)
+  media_gen/            이미지 자동 생성 연동
+  review/               사람 검수 큐
+  publish/              채널별 발행기
+  pipeline/             전체 파이프라인 오케스트레이션
+  cli.py                커맨드라인 진입점
+dashboard/              검수용 대시보드 (Streamlit)
+tests/
+```
+
+## 설치
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env  # API 키 채우기
+```
+
+## 실행
+
+```bash
+# 1) 상품 수집 + 점수화
+autocpna score
+
+# 2) 상위 N개 상품에 대해 채널별 콘텐츠 초안 생성
+autocpna generate --top 10
+
+# 3) 검수 대기열 확인
+autocpna review list
+
+# 4) 승인 (승인된 항목 중 requires_review=false 채널은 자동 발행됨)
+autocpna review approve <draft_id>
+
+# 5) 발행 (auto 채널은 approve 시 자동 실행되지만, 수동 트리거도 가능)
+autocpna publish --draft-id <draft_id>
+```
+
+검수는 CLI 대신 `streamlit run dashboard/app.py` 로 이미지+카피를 보면서 승인/반려할 수도 있습니다.
+
+## 필요한 API 키 (.env)
+
+- `ANTHROPIC_API_KEY` — 콘텐츠 생성
+- `COUPANG_PARTNERS_ACCESS_KEY` / `COUPANG_PARTNERS_SECRET_KEY`
+- `NAVER_DATALAB_CLIENT_ID` / `NAVER_DATALAB_CLIENT_SECRET`
+- `META_PAGE_ACCESS_TOKEN` / `META_IG_BUSINESS_ID` — Instagram/Threads 발행
+- (선택) 이미지 생성 제공자 키 — `media_gen/image_generator.py` 참고
+
+## 아직 구현되지 않은 부분 (다음 단계)
+
+- `ingestion/coupang_partners.py`, `ingestion/naver_datalab.py`: 인증 서명 로직은 구현되어 있으나 실제 응답 파싱은 API 문서 확정 후 채워야 함
+- `media_gen/image_generator.py`: 이미지 생성 제공자 미확정 (플레이스홀더 인터페이스만 존재)
+- `publish/instagram_publisher.py`, `threads_publisher.py`: Graph API 호출 골격만 존재, 실제 토큰으로 테스트 필요
+- 대시보드는 최소 기능만 구현 (목록/승인/반려), 이미지 미리보기는 로컬 파일 경로 기준

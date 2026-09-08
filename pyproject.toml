@@ -1,0 +1,30 @@
+[project]
+name = "autocpna"
+version = "0.1.0"
+description = "AI-based social commerce content pipeline (Coupang Partners + Naver, semi-automated)"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "sqlalchemy>=2.0.0",
+    "pyyaml>=6.0",
+    "click>=8.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "streamlit>=1.35.0",
+]
+
+[project.scripts]
+autocpna = "autocpna.cli:cli"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
