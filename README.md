@@ -87,7 +87,7 @@ autocpna review approve <draft_id>
 autocpna publish --draft-id <draft_id>
 ```
 
-검수는 CLI 대신 `streamlit run dashboard/app.py` 로 이미지+카피를 보면서 본문/해시태그를 직접 수정한 뒤 승인/반려할 수도 있습니다 (승인 버튼을 누르면 화면에 입력된 수정 내용이 먼저 저장됩니다). CLI에서는 `autocpna review edit <draft_id> --body "..." --hashtags "..."`로 동일하게 수정 가능합니다.
+검수는 CLI 대신 `streamlit run dashboard/app.py` 로 상품 정보(이름/가격/카테고리/제휴 프로그램/점수)와 이미지+카피를 함께 보면서 본문/해시태그를 직접 수정한 뒤 승인/반려할 수도 있습니다 (승인 버튼을 누르면 화면에 입력된 수정 내용이 먼저 저장됩니다). 채널별 필터와 최근 발행 로그(성공/실패)도 대시보드에서 확인 가능합니다. CLI에서는 `autocpna review edit <draft_id> --body "..." --hashtags "..."`로 동일하게 수정 가능합니다.
 
 ## 필요한 API 키 (.env)
 
@@ -106,4 +106,3 @@ autocpna publish --draft-id <draft_id>
 - `media_gen/openai_image_generator.py`: OpenAI(gpt-image-1)로 실제 연동됨, `generate` 실행 시 인스타그램 초안에 이미지가 자동 생성되어 `media_output/images/`에 저장됨. `IMAGE_GEN_API_KEY` 필요 (호출당 비용 발생하니 대량 생성 전 단가 확인할 것)
 - `publish/instagram_publisher.py`: 실제 토큰으로 테스트 필요. 이미지 공개 호스팅은 `media_gen/cloudinary_uploader.py`로 연동됨 — `generate_drafts`가 OpenAI로 이미지를 로컬 생성한 직후 Cloudinary에 업로드해 그 `secure_url`을 초안의 `image_path`로 저장함(`pipeline/orchestrator.py`의 `_host_image_publicly`). Cloudinary 키가 없거나 업로드가 실패하면 로컬 경로로 폴백되고, 이 경우 발행 시점에 Instagram 발행기가 "공개 URL 아님" 오류로 명확히 막아줌
 - `publish/threads_publisher.py`: 실제 토큰으로 테스트 필요. `META_THREADS_ACCESS_TOKEN`은 Meta Page 토큰과 별도로 Threads 자체 OAuth(threads_basic, threads_content_publish 스코프)로 발급받아야 함
-- 대시보드는 최소 기능만 구현 (목록/승인/반려), 이미지 미리보기는 로컬 파일 경로 기준
