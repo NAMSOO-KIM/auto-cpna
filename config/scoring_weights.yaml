@@ -9,5 +9,9 @@ weights:
 # 카테고리별 전환율 데이터가 없을 때 사용할 기본값
 default_conversion_rate: 0.02
 
+# 쿠팡파트너스 상품 검색 API는 상품별 커미션율을 응답에 포함하지 않으므로
+# (카테고리별 고정 커미션 정책은 파트너스 대시보드에서만 확인 가능) 사용할 기본값
+default_margin_rate: 0.03
+
 # 최소 통과 기준 (이 밑이면 후보군에서 제외)
 min_score_threshold: 0.35
