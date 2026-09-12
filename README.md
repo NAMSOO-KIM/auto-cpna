@@ -84,12 +84,13 @@ autocpna publish --draft-id <draft_id>
 - `META_PAGE_ACCESS_TOKEN` / `META_IG_BUSINESS_ID` — Instagram 발행
 - `META_THREADS_ACCESS_TOKEN` / `META_THREADS_USER_ID` — Threads 발행 (Threads 자체 OAuth로 발급, Meta Page 토큰과 다름)
 - (선택) 이미지 생성 제공자 키 — `media_gen/image_generator.py` 참고
+- `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` — Instagram 발행용 이미지 공개 호스팅 (미설정 시 로컬 경로를 그대로 두고, 발행 시점에 명확한 오류로 안내)
 
 ## 아직 구현되지 않은 부분 (다음 단계)
 
 - **conversion_rate(전환율)**: 상품/카테고리 단위 자체 클릭 로그는 아직 없지만, 쿠팡파트너스 커미션 리포트 API(`ingestion/coupang_reports.py`)로 최근 30일 계정 전체 실측 전환율(총 주문수/총 클릭수)을 계산해 사용함. 리포트 조회가 실패하면(신규 계정 등) `scoring_weights.yaml`의 `default_conversion_rate`로 대체
 - **seasonality_fit(시의성)**: 네이버 데이터랩 월별 검색 트렌드(`NaverDatalabClient.fetch_monthly_series`)로 이번 달이 과거 대비 성수기인지를 계산 (`scoring/normalize.py`의 `compute_seasonality_fit`). 키워드 히스토리가 충분치 않거나(2개월 미만) API 호출이 실패하면 0.0으로 폴백
 - `media_gen/openai_image_generator.py`: OpenAI(gpt-image-1)로 실제 연동됨, `generate` 실행 시 인스타그램 초안에 이미지가 자동 생성되어 `media_output/images/`에 저장됨. `IMAGE_GEN_API_KEY` 필요 (호출당 비용 발생하니 대량 생성 전 단가 확인할 것)
-- `publish/instagram_publisher.py`: 실제 토큰으로 테스트 필요. 특히 `image_url`은 Meta 서버가 직접 접근 가능한 공개 URL이어야 하는데, 현재 파이프라인이 생성하는 이미지는 로컬 파일(`media_output/images/`)이므로 발행 전에 별도 이미지 호스팅(S3/GCS/Cloudinary 등) 연동이 필요함 — 아직 미구현이라 로컬 경로가 오면 발행 전 단계에서 명확한 오류로 실패함
+- `publish/instagram_publisher.py`: 실제 토큰으로 테스트 필요. 이미지 공개 호스팅은 `media_gen/cloudinary_uploader.py`로 연동됨 — `generate_drafts`가 OpenAI로 이미지를 로컬 생성한 직후 Cloudinary에 업로드해 그 `secure_url`을 초안의 `image_path`로 저장함(`pipeline/orchestrator.py`의 `_host_image_publicly`). Cloudinary 키가 없거나 업로드가 실패하면 로컬 경로로 폴백되고, 이 경우 발행 시점에 Instagram 발행기가 "공개 URL 아님" 오류로 명확히 막아줌
 - `publish/threads_publisher.py`: 실제 토큰으로 테스트 필요. `META_THREADS_ACCESS_TOKEN`은 Meta Page 토큰과 별도로 Threads 자체 OAuth(threads_basic, threads_content_publish 스코프)로 발급받아야 함
 - 대시보드는 최소 기능만 구현 (목록/승인/반려), 이미지 미리보기는 로컬 파일 경로 기준

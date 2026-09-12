@@ -32,6 +32,12 @@ class Settings(BaseSettings):
 
     image_gen_api_key: str = ""
 
+    # Cloudinary - 로컬에 생성된 이미지를 Instagram Graph API가 요구하는
+    # 공개 HTTPS URL로 호스팅하기 위해 사용
+    cloudinary_cloud_name: str = ""
+    cloudinary_api_key: str = ""
+    cloudinary_api_secret: str = ""
+
     database_url: str = "sqlite:///./autocpna.db"
 
 

@@ -17,6 +17,7 @@ from autocpna.db import get_session
 from autocpna.ingestion.coupang_partners import CoupangPartnersClient
 from autocpna.ingestion.coupang_reports import CoupangReportsClient
 from autocpna.ingestion.naver_datalab import NaverDatalabClient
+from autocpna.media_gen.cloudinary_uploader import CloudinaryUploader
 from autocpna.media_gen.image_generator import CHANNEL_IMAGE_SPECS
 from autocpna.media_gen.openai_image_generator import OpenAIImageGenerator
 from autocpna.models.content_draft import ContentDraft, ReviewStatus
@@ -136,6 +137,23 @@ def collect_and_score(keyword: str = "", top_n: int = 20) -> list[Product]:
     return saved
 
 
+def _host_image_publicly(local_path: str) -> str:
+    """Instagram 발행에 필요한 공개 URL을 얻기 위해 Cloudinary에 업로드.
+
+    Cloudinary가 설정되어 있지 않거나 업로드가 실패하면(네트워크 오류 등)
+    로컬 경로를 그대로 반환한다 - 이 경우 검수 화면에는 여전히 이미지가
+    보이지만, InstagramPublisher가 발행 시점에 "공개 URL 아님" 오류로
+    명확하게 막아준다(publish/instagram_publisher.py 참고).
+    """
+    uploader = CloudinaryUploader()
+    if not uploader.configured:
+        return local_path
+    try:
+        return uploader.upload(local_path)
+    except httpx.HTTPError:
+        return local_path
+
+
 def generate_drafts(product: Product, channels: list[str] | None = None) -> list[ContentDraft]:
     """상품 하나에 대해 채널별 콘텐츠 초안을 생성하고 검수 대기열에 넣는다."""
     channels_cfg = get_channels_config()
@@ -156,9 +174,10 @@ def generate_drafts(product: Product, channels: list[str] | None = None) -> list
             image_path = ""
             if channel == "instagram":
                 image_prompt = generator.build_image_prompt(product_dict)
-                image_path = OpenAIImageGenerator().generate(
+                local_image_path = OpenAIImageGenerator().generate(
                     image_prompt, CHANNEL_IMAGE_SPECS["instagram_feed"]
                 )
+                image_path = _host_image_publicly(local_image_path)
             draft = ContentDraft(
                 product_id=product.id,
                 channel=channel,
