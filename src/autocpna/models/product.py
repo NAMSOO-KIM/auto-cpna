@@ -13,7 +13,10 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    external_id: Mapped[str] = mapped_column(String, unique=True)  # 쿠팡 상품 ID
+    external_id: Mapped[str] = mapped_column(String, unique=True)  # 쿠팡 상품 ID 또는 수동 등록 slug
+    # 어느 제휴 프로그램 상품인지 (coupang_partners / naver_shopping_connect 등).
+    # content_gen의 제휴 고지 문구를 프로그램에 맞게 고르는 데 쓰인다 (base.py DISCLOSURE_TEXT 참고).
+    source: Mapped[str] = mapped_column(String, default="coupang_partners")
     name: Mapped[str] = mapped_column(String)
     category: Mapped[str] = mapped_column(String)
     price: Mapped[float] = mapped_column(Float)

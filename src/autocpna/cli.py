@@ -10,6 +10,7 @@ from autocpna.pipeline.orchestrator import (
     generate_blog_comparison_draft,
     generate_drafts,
     publish_approved_draft,
+    register_manual_product,
 )
 from autocpna.review import queue as review_queue
 
@@ -66,6 +67,40 @@ def generate_comparison(topic: str, category: str, top_n: int) -> None:
 
     draft = generate_blog_comparison_draft(topic, products)
     click.echo(f"비교 콘텐츠 초안 #{draft.id} 생성됨 ({len(products)}개 상품 비교)")
+
+
+@cli.command("add-product")
+@click.option("--name", required=True, help="상품명")
+@click.option("--category", required=True, help="카테고리")
+@click.option("--price", type=float, required=True, help="가격(원)")
+@click.option("--url", "product_url", required=True, help="쇼핑커넥트 등에서 발급받은 상품 링크")
+@click.option("--margin-rate", type=float, required=True, help="수수료율 (예: 0.1 = 10%)")
+@click.option(
+    "--source",
+    default="naver_shopping_connect",
+    help="제휴 프로그램 식별자 (content_gen의 제휴 고지 문구 선택에 쓰임)",
+)
+@click.option("--keyword", default="", help="네이버 데이터랩 트렌드 조회용 키워드 (선택)")
+def add_product(
+    name: str, category: str, price: float, product_url: str, margin_rate: float, source: str, keyword: str
+) -> None:
+    """공개 수집 API가 없는 제휴 프로그램(네이버 쇼핑커넥트 등) 상품을 수동 등록.
+
+    쿠팡파트너스는 `score` 명령으로 자동 수집되지만, 네이버 쇼핑커넥트는
+    크리에이터가 직접 상품을 고르고 링크/수수료율을 확인하는 구조라 API가
+    없다. 쇼핑커넥트 화면에서 확인한 값을 그대로 이 명령에 입력하면, 이후
+    콘텐츠 생성/검수/발행은 쿠팡 상품과 동일한 파이프라인을 탄다.
+    """
+    product = register_manual_product(
+        name=name,
+        category=category,
+        price=price,
+        product_url=product_url,
+        margin_rate=margin_rate,
+        source=source,
+        keyword=keyword,
+    )
+    click.echo(f"#{product.id} 등록됨 [{product.source}] (score={product.score:.3f})")
 
 
 @cli.group()

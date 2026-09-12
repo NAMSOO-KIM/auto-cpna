@@ -6,6 +6,7 @@ collect_and_score -> generate_drafts -> (사람 검수) -> publish_approved
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 
 import httpx
 
@@ -117,6 +118,7 @@ def collect_and_score(keyword: str = "", top_n: int = 20) -> list[Product]:
         for data, breakdown in ranked:
             product = Product(
                 external_id=data["external_id"],
+                source=data.get("source", "coupang_partners"),
                 name=data["name"],
                 category=data["category"],
                 price=data["price"],
@@ -135,6 +137,68 @@ def collect_and_score(keyword: str = "", top_n: int = 20) -> list[Product]:
         for p in saved:
             session.refresh(p)
     return saved
+
+
+def register_manual_product(
+    *,
+    name: str,
+    category: str,
+    price: float,
+    product_url: str,
+    margin_rate: float,
+    source: str,
+    keyword: str = "",
+) -> Product:
+    """공개 수집 API가 없는 제휴 프로그램(예: 네이버 쇼핑커넥트)의 상품을
+    사람이 직접 등록한다.
+
+    네이버 쇼핑커넥트는 크리에이터가 대상 상품을 골라 전용 링크를 발급받는
+    구조이고 프로그램 자체에 조회/링크발급 API가 없어(2026-09 기준) 쿠팡
+    파트너스처럼 자동 수집할 수 없다. product_url/margin_rate는 그렇게
+    사람이 쇼핑커넥트 화면에서 직접 확인한 값을 그대로 입력받는다.
+
+    keyword를 주면 데이터랩으로 search_volume/trend_momentum/seasonality_fit을
+    collect_and_score와 동일한 방식으로 계산하고, 안 주면 0.0으로 둔다
+    (conversion_rate는 프로그램별 클릭 데이터가 없어 항상 ScoringEngine의
+    config 기본값으로 대체됨). 사람이 이미 골라서 등록하는 상품이므로
+    collect_and_score와 달리 min_score_threshold 필터링은 적용하지 않는다.
+    """
+    search_volume = 0.0
+    trend_momentum = 0.0
+    if keyword:
+        trend_results = NaverDatalabClient().fetch(keywords=[keyword])
+        if trend_results:
+            search_volume = normalize_search_volume(trend_results[0]["search_volume"])
+            trend_momentum = normalize_trend_momentum(trend_results[0]["trend_momentum"])
+    seasonality_fit = _fetch_seasonality_fit(keyword)
+
+    breakdown = ScoringEngine().score(
+        {
+            "search_volume": search_volume,
+            "trend_momentum": trend_momentum,
+            "margin_rate": margin_rate,
+            "seasonality_fit": seasonality_fit,
+        }
+    )
+
+    with get_session() as session:
+        product = Product(
+            external_id=f"{source}:{uuid.uuid4().hex}",
+            source=source,
+            name=name,
+            category=category,
+            price=price,
+            margin_rate=margin_rate,
+            search_volume=search_volume,
+            trend_momentum=trend_momentum,
+            seasonality_fit=seasonality_fit,
+            product_url=product_url,
+            score=breakdown.total,
+        )
+        session.add(product)
+        session.commit()
+        session.refresh(product)
+    return product
 
 
 def _host_image_publicly(local_path: str) -> str:
@@ -164,6 +228,7 @@ def generate_drafts(product: Product, channels: list[str] | None = None) -> list
         "category": product.category,
         "price": product.price,
         "product_url": product.product_url,
+        "source": product.source,
     }
 
     drafts: list[ContentDraft] = []
@@ -210,6 +275,7 @@ def generate_blog_comparison_draft(topic: str, products: list[Product]) -> Conte
             "category": p.category,
             "price": p.price,
             "product_url": p.product_url,
+            "source": p.source,
         }
         for p in products
     ]

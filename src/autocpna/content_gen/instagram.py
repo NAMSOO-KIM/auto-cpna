@@ -18,7 +18,7 @@ class InstagramGenerator(ChannelGenerator):
             f"요구사항:\n"
             f"- 3~5문장의 짧은 감성 캡션\n"
             f"- 해시태그는 최대 {max_tags}개, 캡션 아래 별도 줄에\n"
-            f"- 제휴 링크 고지 문구 포함"
+            f"- 다음 제휴 고지 문구를 캡션 하단에 그대로 포함: \"{self.disclosure_text(product)}\""
         )
 
     def build_image_prompt(self, product: dict) -> str:

@@ -17,5 +17,5 @@ class ThreadsGenerator(ChannelGenerator):
             f"- 일상 속 고민에서 시작해 자연스럽게 상품으로 이어지는 스토리텔링\n"
             f"- 500자 이내\n"
             f"- 마지막에 댓글을 유도하는 질문 1개\n"
-            f"- 제휴 링크 고지 문구 포함"
+            f"- 다음 제휴 고지 문구를 그대로 포함: \"{self.disclosure_text(product)}\""
         )

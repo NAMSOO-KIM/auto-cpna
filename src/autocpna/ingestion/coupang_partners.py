@@ -42,6 +42,7 @@ class CoupangPartnersClient(DataSource):
         return [
             {
                 "external_id": str(item.get("productId", "")),
+                "source": "coupang_partners",
                 "name": item.get("productName", ""),
                 "category": keyword,
                 "price": float(item.get("productPrice", 0)),

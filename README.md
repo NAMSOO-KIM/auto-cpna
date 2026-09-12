@@ -1,14 +1,23 @@
 # auto-cpna
 
-쿠팡파트너스 + 네이버 쇼핑 연동 AI 소셜 커머스 콘텐츠 파이프라인.
+쿠팡파트너스 + 네이버 쇼핑커넥트 연동 AI 소셜 커머스 콘텐츠 파이프라인.
 **완전 자동화가 아니라 "반자동(Human-in-the-loop)" 파이프라인**으로 설계되어 있습니다.
 발행 직전 사람의 승인 단계를 거치는 이유는 아래 "왜 반자동인가" 참고.
+
+## 지원하는 제휴 프로그램 (Product.source)
+
+| source | 상품 수집 | 비고 |
+|---|---|---|
+| `coupang_partners` (기본값) | `autocpna score`로 자동 수집 | 쿠팡파트너스 오픈 API 사용 |
+| `naver_shopping_connect` | `autocpna add-product`로 수동 등록 | 네이버 쇼핑커넥트는 크리에이터가 상품을 직접 골라 링크를 발급받는 구조라 2026-09 기준 공개 API가 없음. 링크/수수료율을 사람이 확인해 입력하면 이후 콘텐츠 생성·검수·발행은 쿠팡 상품과 동일한 파이프라인을 탐 |
+
+두 프로그램 모두 콘텐츠에 들어가는 제휴 고지 문구는 `content_gen/base.py`의 `DISCLOSURE_TEXT`에서 source별로 다르게 관리되어, 실제 제휴 관계와 다른 프로그램명이 고지되지 않도록 합니다.
 
 ## 데이터 흐름
 
 ```mermaid
 flowchart LR
-    A[Ingestion\n쿠팡파트너스 API\n네이버 데이터랩] --> B[Scoring Engine\n점수화]
+    A[Ingestion\n쿠팡파트너스 API 자동 수집\n네이버 쇼핑커넥트 수동 등록\n네이버 데이터랩 트렌드] --> B[Scoring Engine\n점수화]
     B --> C[Content Generation\n채널별 페르소나 프롬프트]
     C --> D[Media Generation\n이미지 자동 생성]
     D --> E[Review Queue\n사람 승인/수정]
@@ -63,6 +72,10 @@ autocpna generate --top 10
 
 # 2b) 네이버 블로그용 'OO 추천 TOP N' 비교 콘텐츠 (기본 컨셉)
 autocpna generate-comparison --topic "무선 이어폰" --category "이어폰" --top 5
+
+# 1b) 네이버 쇼핑커넥트처럼 자동 수집 API가 없는 상품은 수동 등록 (링크/수수료율은 직접 확인)
+autocpna add-product --name "유기농 핸드크림" --category "뷰티" --price 15000 \
+  --url "https://shoppingconnect.naver.com/..." --margin-rate 0.15 --keyword "핸드크림"
 
 # 3) 검수 대기열 확인
 autocpna review list
