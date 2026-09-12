@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     coupang_partners_secret_key: str = ""
     coupang_partners_vendor_id: str = ""
 
+    # NAVER API HUB(NCP 콘솔)에서 발급하는 검색어 트렌드 API 키
     naver_datalab_client_id: str = ""
     naver_datalab_client_secret: str = ""
 

@@ -80,13 +80,12 @@ autocpna publish --draft-id <draft_id>
 
 - `ANTHROPIC_API_KEY` — 콘텐츠 생성
 - `COUPANG_PARTNERS_ACCESS_KEY` / `COUPANG_PARTNERS_SECRET_KEY`
-- `NAVER_DATALAB_CLIENT_ID` / `NAVER_DATALAB_CLIENT_SECRET`
+- `NAVER_DATALAB_CLIENT_ID` / `NAVER_DATALAB_CLIENT_SECRET` — 2026년 네이버 API HUB 이관 이후에는 NCP 콘솔에서 발급받은 키를 사용 (기존 개발자센터 키는 이관 신청을 마친 경우에 한해 유예기간 동안 `NaverDatalabClient(use_legacy_endpoint=True)`로 대체 가능)
 - `META_PAGE_ACCESS_TOKEN` / `META_IG_BUSINESS_ID` — Instagram/Threads 발행
 - (선택) 이미지 생성 제공자 키 — `media_gen/image_generator.py` 참고
 
 ## 아직 구현되지 않은 부분 (다음 단계)
 
-- `ingestion/coupang_partners.py`, `ingestion/naver_datalab.py`: 인증 서명 로직은 구현되어 있으나 실제 응답 파싱은 API 문서 확정 후 채워야 함
 - **conversion_rate(전환율)**, **seasonality_fit(시의성)**: 아직 연결된 데이터 소스가 없음. conversion_rate는 자체 클릭/구매 로그가 쌓이기 전까지 `scoring_weights.yaml`의 `default_conversion_rate`로 대체되고, seasonality_fit은 0으로 고정되어 있음 — 실데이터 확보 전까지는 스코어에 반영되지 않는 항목으로 이해할 것
 - `media_gen/openai_image_generator.py`: OpenAI(gpt-image-1)로 실제 연동됨, `generate` 실행 시 인스타그램 초안에 이미지가 자동 생성되어 `media_output/images/`에 저장됨. `IMAGE_GEN_API_KEY` 필요 (호출당 비용 발생하니 대량 생성 전 단가 확인할 것)
 - `publish/instagram_publisher.py`, `threads_publisher.py`: Graph API 호출 골격만 존재, 실제 토큰으로 테스트 필요
