@@ -143,8 +143,11 @@ def review_reject(draft_id: int, note: str) -> None:
 @click.option("--draft-id", type=int, required=True)
 def publish(draft_id: int) -> None:
     """승인된 초안 발행."""
-    publish_approved_draft(draft_id)
-    click.echo(f"#{draft_id} 발행 처리 완료")
+    result = publish_approved_draft(draft_id)
+    if result.success:
+        click.echo(f"#{draft_id} 발행 완료 (remote_post_id={result.remote_post_id})")
+    else:
+        click.echo(f"#{draft_id} 발행 실패: {result.error_message}")
 
 
 if __name__ == "__main__":

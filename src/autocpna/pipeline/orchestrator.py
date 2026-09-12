@@ -23,7 +23,8 @@ from autocpna.media_gen.image_generator import CHANNEL_IMAGE_SPECS
 from autocpna.media_gen.openai_image_generator import OpenAIImageGenerator
 from autocpna.models.content_draft import ContentDraft, ReviewStatus
 from autocpna.models.product import Product
-from autocpna.publish.base import Publisher
+from autocpna.models.publish_log import PublishLog
+from autocpna.publish.base import Publisher, PublishResult
 from autocpna.publish.instagram_publisher import InstagramPublisher
 from autocpna.publish.naver_blog_publisher import NaverBlogPublisher
 from autocpna.publish.threads_publisher import ThreadsPublisher
@@ -294,8 +295,8 @@ def generate_blog_comparison_draft(topic: str, products: list[Product]) -> Conte
     return draft
 
 
-def publish_approved_draft(draft_id: int) -> None:
-    """승인된 초안을 발행한다.
+def publish_approved_draft(draft_id: int) -> PublishResult:
+    """승인된 초안을 발행하고, 성공/실패와 무관하게 PublishLog에 결과를 남긴다.
 
     채널별 발행 가능 여부(자동 발행 vs 수동 발행 전용)는 각 Publisher 구현체
     내부에서 강제된다 (예: NaverBlogPublisher는 절대 자동 발행하지 않고
@@ -313,4 +314,14 @@ def publish_approved_draft(draft_id: int) -> None:
 
         if result.success:
             draft.status = ReviewStatus.PUBLISHED
+        session.add(
+            PublishLog(
+                draft_id=draft.id,
+                channel=draft.channel,
+                success=result.success,
+                remote_post_id=result.remote_post_id,
+                error_message=result.error_message,
+            )
+        )
         session.commit()
+    return result

@@ -1,18 +1,4 @@
-import pytest
-
 from autocpna.pipeline.orchestrator import register_manual_product
-
-
-@pytest.fixture
-def fresh_db(monkeypatch, tmp_path):
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/test.db")
-    from autocpna.config import get_settings
-    from autocpna import db
-
-    get_settings.cache_clear()
-    monkeypatch.setattr(db, "_engine", None)
-    monkeypatch.setattr(db, "_SessionLocal", None)
-    db.init_db()
 
 
 def test_register_manual_product_without_keyword(fresh_db):
