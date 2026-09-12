@@ -102,3 +102,36 @@ def test_fetch_truncates_to_max_five_keyword_groups(env, monkeypatch):
     NaverDatalabClient().fetch(keywords=[f"kw{i}" for i in range(8)])
 
     assert len(captured["body"]["keywordGroups"]) == 5
+
+
+def test_fetch_monthly_series_returns_period_to_ratio_map(env, monkeypatch):
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "title": "무선 이어폰",
+                        "data": [
+                            {"period": "2025-09-01", "ratio": 40.0},
+                            {"period": "2025-10-01", "ratio": 70.0},
+                        ],
+                    }
+                ]
+            },
+        )
+
+    _mock_post(monkeypatch, handler)
+
+    series = NaverDatalabClient().fetch_monthly_series("무선 이어폰", months=12)
+
+    assert series == {"2025-09": 40.0, "2025-10": 70.0}
+    assert captured["body"]["timeUnit"] == "month"
+    assert captured["body"]["keywordGroups"] == [
+        {"groupName": "무선 이어폰", "keywords": ["무선 이어폰"]}
+    ]

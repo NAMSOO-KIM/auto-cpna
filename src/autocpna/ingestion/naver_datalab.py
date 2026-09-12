@@ -12,6 +12,8 @@ X-NCP-APIGW-API-KEY-ID/-KEY)로 이관했다. 신규 발급은 API HUB에서만
 """
 from __future__ import annotations
 
+import datetime as dt
+
 import httpx
 
 from autocpna.config import get_settings
@@ -21,6 +23,15 @@ HUB_URL = "https://naverapihub.apigw.ntruss.com/search-trend/v1/search"
 LEGACY_URL = "https://openapi.naver.com/v1/datalab/search"
 
 MAX_KEYWORD_GROUPS = 5
+
+
+def _months_ago(months: int, from_date: dt.date | None = None) -> dt.date:
+    today = from_date or dt.date.today()
+    year, month = today.year, today.month - months
+    while month <= 0:
+        month += 12
+        year -= 1
+    return dt.date(year, month, 1)
 
 
 class NaverDatalabClient(DataSource):
@@ -63,17 +74,7 @@ class NaverDatalabClient(DataSource):
         안에서만 비교 가능).
         """
         keywords = (keywords or [])[:MAX_KEYWORD_GROUPS]
-        body = {
-            "startDate": start_date,
-            "endDate": end_date,
-            "timeUnit": time_unit,
-            "keywordGroups": [{"groupName": kw, "keywords": [kw]} for kw in keywords],
-        }
-        url, headers = self._url_and_headers()
-        with httpx.Client() as client:
-            resp = client.post(url, json=body, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
+        data = self._post(keywords, start_date, end_date, time_unit)
 
         results = []
         for group in data.get("results", []):
@@ -91,3 +92,32 @@ class NaverDatalabClient(DataSource):
                 }
             )
         return results
+
+    def fetch_monthly_series(self, keyword: str, months: int = 24) -> dict[str, str | float]:
+        """최근 `months`개월치 월별 검색 트렌드 원본 시계열을 {"YYYY-MM": ratio}로 반환.
+
+        scoring.normalize.compute_seasonality_fit의 입력으로 쓰인다 (정규화는
+        여기서 하지 않고 스코어링 계층에서 처리 - 다른 ingestion 결과와 동일한
+        관례).
+        """
+        start = _months_ago(months)
+        end = dt.date.today()
+        data = self._post([keyword], start.isoformat(), end.isoformat(), "month")
+
+        results = data.get("results", [])
+        if not results:
+            return {}
+        return {point["period"][:7]: point["ratio"] for point in results[0].get("data", [])}
+
+    def _post(self, keywords: list[str], start_date: str, end_date: str, time_unit: str) -> dict:
+        body = {
+            "startDate": start_date,
+            "endDate": end_date,
+            "timeUnit": time_unit,
+            "keywordGroups": [{"groupName": kw, "keywords": [kw]} for kw in keywords],
+        }
+        url, headers = self._url_and_headers()
+        with httpx.Client() as client:
+            resp = client.post(url, json=body, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
