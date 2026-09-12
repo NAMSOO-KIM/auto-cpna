@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     meta_page_access_token: str = ""
     meta_ig_business_id: str = ""
     meta_threads_user_id: str = ""
+    # Threads API는 Meta Page 토큰이 아니라 Threads 자체 OAuth 플로우
+    # (threads_basic, threads_content_publish 스코프)로 발급받은 별도 토큰을 쓴다.
+    meta_threads_access_token: str = ""
 
     image_gen_api_key: str = ""
 
