@@ -8,14 +8,28 @@
 """
 from __future__ import annotations
 
+import os
+
 import streamlit as st
 
-from autocpna.db import get_session, init_db
-from autocpna.models.content_draft import ReviewStatus
-from autocpna.models.product import Product
-from autocpna.models.publish_log import PublishLog
-from autocpna.pipeline.orchestrator import regenerate_draft
-from autocpna.review import queue as review_queue
+# Streamlit Community Cloud의 "Secrets"는 st.secrets로만 노출되고 일반
+# 환경변수로는 자동 전달되지 않는다. config.py는 pydantic-settings로 os
+# 환경변수/.env만 읽으므로, 배포 환경에서 설정한 Secrets를 여기서 미리
+# os.environ에 복사해줘야 API 키들이 정상적으로 로드된다. 로컬 `streamlit
+# run`(secrets.toml 없음)에서는 st.secrets 접근 자체가 예외를 던지므로 조용히
+# 넘어간다.
+try:
+    for _key, _value in st.secrets.items():
+        os.environ.setdefault(_key, str(_value))
+except Exception:
+    pass
+
+from autocpna.db import get_session, init_db  # noqa: E402
+from autocpna.models.content_draft import ReviewStatus  # noqa: E402
+from autocpna.models.product import Product  # noqa: E402
+from autocpna.models.publish_log import PublishLog  # noqa: E402
+from autocpna.pipeline.orchestrator import regenerate_draft  # noqa: E402
+from autocpna.review import queue as review_queue  # noqa: E402
 
 st.set_page_config(page_title="auto-cpna 검수", layout="wide")
 init_db()
