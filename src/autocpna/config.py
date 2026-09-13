@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     meta_page_access_token: str = ""
     meta_ig_business_id: str = ""
+    # Instagram 발행에 쓰는 IG 비즈니스 계정 ID와는 다른 값 - Facebook 페이지
+    # 피드에 직접 포스팅(POST /{page-id}/feed)할 때 쓰는 페이지 ID
+    meta_page_id: str = ""
     meta_threads_user_id: str = ""
     # Threads API는 Meta Page 토큰이 아니라 Threads 자체 OAuth 플로우
     # (threads_basic, threads_content_publish 스코프)로 발급받은 별도 토큰을 쓴다.

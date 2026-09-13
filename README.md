@@ -30,7 +30,7 @@ flowchart LR
 
 | 채널 | 발행 방식 | 이유 |
 |---|---|---|
-| Instagram / Threads | 승인 후 API 자동 발행 (`channels.yaml`에서 `requires_review` 조정 가능) | Meta Graph API가 비즈니스 계정 예약 발행을 공식 지원 |
+| Instagram / Threads / Facebook | 승인 후 API 자동 발행 (`channels.yaml`에서 `requires_review` 조정 가능) | Meta Graph API가 비즈니스 계정 예약 발행을 공식 지원 |
 | 네이버 블로그 | **항상 초안만 생성, 발행은 수동** | 네이버는 공식 자동 포스팅 API가 없고, 자동화 도구로 올리면 어뷰징으로 계정 정지 위험이 큼 |
 
 `config/channels.yaml`의 `requires_review` 플래그로 채널별 자동/반자동 정책을 조정합니다.
@@ -67,7 +67,7 @@ cp .env.example .env  # API 키 채우기
 # 1) 상품 수집 + 점수화
 autocpna score
 
-# 2) 상위 N개 상품에 대해 채널별 콘텐츠 초안 생성 (인스타/스레드는 상품 단위, 블로그는 단일 리뷰)
+# 2) 상위 N개 상품에 대해 채널별 콘텐츠 초안 생성 (인스타/스레드/Facebook은 상품 단위, 블로그는 단일 리뷰)
 autocpna generate --top 10
 
 # 2b) 네이버 블로그용 'OO 추천 TOP N' 비교 콘텐츠 (기본 컨셉)
@@ -95,6 +95,7 @@ autocpna publish --draft-id <draft_id>
 - `COUPANG_PARTNERS_ACCESS_KEY` / `COUPANG_PARTNERS_SECRET_KEY`
 - `NAVER_DATALAB_CLIENT_ID` / `NAVER_DATALAB_CLIENT_SECRET` — 2026년 네이버 API HUB 이관 이후에는 NCP 콘솔에서 발급받은 키를 사용 (기존 개발자센터 키는 이관 신청을 마친 경우에 한해 유예기간 동안 `NaverDatalabClient(use_legacy_endpoint=True)`로 대체 가능)
 - `META_PAGE_ACCESS_TOKEN` / `META_IG_BUSINESS_ID` — Instagram 발행
+- `META_PAGE_ID` — Facebook 페이지 발행 (Instagram과 같은 Page 토큰을 재사용하지만, 대상 ID는 IG 비즈니스 계정 ID와 다른 페이지 자체 ID)
 - `META_THREADS_ACCESS_TOKEN` / `META_THREADS_USER_ID` — Threads 발행 (Threads 자체 OAuth로 발급, Meta Page 토큰과 다름)
 - (선택) 이미지 생성 제공자 키 — `media_gen/image_generator.py` 참고
 - `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` — Instagram 발행용 이미지 공개 호스팅 (미설정 시 로컬 경로를 그대로 두고, 발행 시점에 명확한 오류로 안내)

@@ -12,6 +12,7 @@ import httpx
 
 from autocpna.config import get_channels_config
 from autocpna.content_gen.blog import BlogGenerator
+from autocpna.content_gen.facebook import FacebookGenerator
 from autocpna.content_gen.instagram import InstagramGenerator
 from autocpna.content_gen.threads import ThreadsGenerator
 from autocpna.db import get_session
@@ -25,6 +26,7 @@ from autocpna.models.content_draft import ContentDraft, ReviewStatus
 from autocpna.models.product import Product
 from autocpna.models.publish_log import PublishLog
 from autocpna.publish.base import Publisher, PublishResult
+from autocpna.publish.facebook_publisher import FacebookPublisher
 from autocpna.publish.instagram_publisher import InstagramPublisher
 from autocpna.publish.naver_blog_publisher import NaverBlogPublisher
 from autocpna.publish.threads_publisher import ThreadsPublisher
@@ -41,12 +43,14 @@ GENERATORS = {
     "instagram": InstagramGenerator,
     "threads": ThreadsGenerator,
     "naver_blog": BlogGenerator,
+    "facebook": FacebookGenerator,
 }
 
 PUBLISHERS: dict[str, Publisher] = {
     "instagram": InstagramPublisher,
     "threads": ThreadsPublisher,
     "naver_blog": NaverBlogPublisher,
+    "facebook": FacebookPublisher,
 }
 
 

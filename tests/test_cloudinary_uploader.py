@@ -38,6 +38,11 @@ def test_configured_reflects_credentials(uploader):
 
 
 def test_not_configured_without_credentials(monkeypatch):
+    # 로컬 .env에 실제 크리덴셜이 들어있어도 이 테스트는 "미설정" 상태를
+    # 검증해야 하므로, 세 값을 명시적으로 빈 문자열로 덮어써 격리한다.
+    monkeypatch.setenv("CLOUDINARY_CLOUD_NAME", "")
+    monkeypatch.setenv("CLOUDINARY_API_KEY", "")
+    monkeypatch.setenv("CLOUDINARY_API_SECRET", "")
     from autocpna.config import get_settings
 
     get_settings.cache_clear()
