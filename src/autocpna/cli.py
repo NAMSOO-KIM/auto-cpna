@@ -10,6 +10,7 @@ from autocpna.pipeline.orchestrator import (
     generate_blog_comparison_draft,
     generate_drafts,
     publish_approved_draft,
+    regenerate_draft,
     register_manual_product,
 )
 from autocpna.review import queue as review_queue
@@ -133,10 +134,26 @@ def review_approve(draft_id: int, note: str) -> None:
 
 @review.command("reject")
 @click.argument("draft_id", type=int)
-@click.option("--note", default="")
+@click.option("--note", default="", help="반려 사유 (재생성 시 이 내용이 프롬프트에 반영됨)")
 def review_reject(draft_id: int, note: str) -> None:
     review_queue.reject(draft_id, note)
     click.echo(f"#{draft_id} 반려됨")
+
+
+@review.command("rejected")
+def review_rejected() -> None:
+    """반려된 초안 목록 (재생성 대상)."""
+    for draft in review_queue.list_rejected():
+        note = f" - 사유: {draft.reviewer_note}" if draft.reviewer_note else ""
+        click.echo(f"#{draft.id} [{draft.channel}]{note}")
+
+
+@review.command("regenerate")
+@click.argument("draft_id", type=int)
+def review_regenerate(draft_id: int) -> None:
+    """반려된 초안을 반려 사유를 반영해 다시 생성 (새 PENDING 초안 추가)."""
+    new_draft = regenerate_draft(draft_id)
+    click.echo(f"#{draft_id} -> #{new_draft.id} 재생성됨 (검수 대기)")
 
 
 @cli.command()

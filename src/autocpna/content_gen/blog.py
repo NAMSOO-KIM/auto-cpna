@@ -6,7 +6,7 @@ from autocpna.content_gen.base import MODEL, ChannelGenerator
 class BlogGenerator(ChannelGenerator):
     channel = "naver_blog"
 
-    def build_user_prompt(self, product: dict) -> str:
+    def build_user_prompt(self, product: dict, feedback: str = "") -> str:
         """비교 대상이 마땅치 않을 때 쓰는 단일 상품 리뷰용 프롬프트.
         기본 컨셉은 build_comparison_prompt (추천 TOP N / 비교형) 사용."""
         return (
@@ -21,9 +21,10 @@ class BlogGenerator(ChannelGenerator):
             f"- 본문 하단에 구매 링크와 다음 제휴 고지 문구를 그대로 포함: "
             f"\"{self.disclosure_text(product)}\"\n"
             f"- 1200~1800자 분량"
+            f"{self.feedback_block(feedback)}"
         )
 
-    def build_comparison_prompt(self, topic: str, products: list[dict]) -> str:
+    def build_comparison_prompt(self, topic: str, products: list[dict], feedback: str = "") -> str:
         """'OO 추천 TOP N' / 비교형 콘텐츠 프롬프트. naver_blog 기본 포맷.
 
         제휴 고지 문구는 첫 상품의 source를 기준으로 하나만 고른다 - 비교글은
@@ -47,15 +48,19 @@ class BlogGenerator(ChannelGenerator):
             f"- 상품 소개마다 구매 링크 삽입, 본문 상단에 다음 제휴 고지 문구를 그대로 포함: "
             f"\"{disclosure}\"\n"
             f"- 1500~2200자 분량"
+            f"{self.feedback_block(feedback)}"
         )
 
-    def generate_comparison(self, topic: str, products: list[dict]) -> str:
+    def generate_comparison(self, topic: str, products: list[dict], feedback: str = "") -> str:
         message = self._client.messages.create(
             model=MODEL,
             max_tokens=2048,
             system=self._build_system_prompt(),
             messages=[
-                {"role": "user", "content": self.build_comparison_prompt(topic, products)}
+                {
+                    "role": "user",
+                    "content": self.build_comparison_prompt(topic, products, feedback),
+                }
             ],
         )
         return message.content[0].text

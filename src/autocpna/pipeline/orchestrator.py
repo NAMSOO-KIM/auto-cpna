@@ -223,12 +223,8 @@ def _host_image_publicly(local_path: str) -> str:
         return local_path
 
 
-def generate_drafts(product: Product, channels: list[str] | None = None) -> list[ContentDraft]:
-    """상품 하나에 대해 채널별 콘텐츠 초안을 생성하고 검수 대기열에 넣는다."""
-    channels_cfg = get_channels_config()
-    channels = channels or [c for c, cfg in channels_cfg.items() if cfg.get("enabled")]
-
-    product_dict = {
+def _product_to_dict(product: Product) -> dict:
+    return {
         "name": product.name,
         "category": product.category,
         "price": product.price,
@@ -236,18 +232,35 @@ def generate_drafts(product: Product, channels: list[str] | None = None) -> list
         "source": product.source,
     }
 
+
+def _generate_channel_content(product: Product, channel: str, feedback: str = "") -> tuple[str, str]:
+    """채널 하나에 대해 (본문, image_path)를 생성. instagram이 아니면 image_path는 "".
+
+    feedback을 주면(반려 후 재생성) 생성기 프롬프트에 반영된다 - generate_drafts와
+    regenerate_draft가 이 함수를 공유해서 최초 생성/재생성 로직이 갈라지지 않게 한다.
+    """
+    generator = GENERATORS[channel]()
+    product_dict = _product_to_dict(product)
+    text = generator.generate(product_dict, feedback=feedback)
+    image_path = ""
+    if channel == "instagram":
+        image_prompt = generator.build_image_prompt(product_dict)
+        local_image_path = OpenAIImageGenerator().generate(
+            image_prompt, CHANNEL_IMAGE_SPECS["instagram_feed"]
+        )
+        image_path = _host_image_publicly(local_image_path)
+    return text, image_path
+
+
+def generate_drafts(product: Product, channels: list[str] | None = None) -> list[ContentDraft]:
+    """상품 하나에 대해 채널별 콘텐츠 초안을 생성하고 검수 대기열에 넣는다."""
+    channels_cfg = get_channels_config()
+    channels = channels or [c for c, cfg in channels_cfg.items() if cfg.get("enabled")]
+
     drafts: list[ContentDraft] = []
     with get_session() as session:
         for channel in channels:
-            generator = GENERATORS[channel]()
-            text = generator.generate(product_dict)
-            image_path = ""
-            if channel == "instagram":
-                image_prompt = generator.build_image_prompt(product_dict)
-                local_image_path = OpenAIImageGenerator().generate(
-                    image_prompt, CHANNEL_IMAGE_SPECS["instagram_feed"]
-                )
-                image_path = _host_image_publicly(local_image_path)
+            text, image_path = _generate_channel_content(product, channel)
             draft = ContentDraft(
                 product_id=product.id,
                 channel=channel,
@@ -263,6 +276,46 @@ def generate_drafts(product: Product, channels: list[str] | None = None) -> list
     return drafts
 
 
+def regenerate_draft(draft_id: int) -> ContentDraft:
+    """반려된 초안을 검수자 반려 사유(reviewer_note)를 반영해 다시 생성.
+
+    기존 반려 초안은 이력 보존을 위해 그대로 두고, 새 PENDING 초안을
+    추가한다 (아키텍처상 반려 -> 폐기/재생성 경로).
+
+    주의: generate_blog_comparison_draft로 만든 'OO 추천 TOP N' 비교글은
+    지원하지 않는다 - 그 채널은 여러 상품을 묶어 만들지만 ContentDraft에는
+    대표 상품 하나(product_id)만 연결되어 있어, 여기서 재생성하면 비교글이
+    아니라 그 대표 상품 단일 리뷰로 바뀌어버린다. 비교글을 다시 만들려면
+    generate_blog_comparison_draft를 다시 호출할 것.
+    """
+    with get_session() as session:
+        old_draft = session.get(ContentDraft, draft_id)
+        if old_draft is None:
+            raise ValueError(f"draft {draft_id} not found")
+        if old_draft.status != ReviewStatus.REJECTED:
+            raise ValueError(f"draft {draft_id} is not rejected (status={old_draft.status})")
+        product = session.get(Product, old_draft.product_id)
+        if product is None:
+            raise ValueError(f"draft {draft_id}의 product {old_draft.product_id}를 찾을 수 없습니다")
+        channel = old_draft.channel
+        feedback = old_draft.reviewer_note
+
+    text, image_path = _generate_channel_content(product, channel, feedback=feedback)
+
+    with get_session() as session:
+        new_draft = ContentDraft(
+            product_id=product.id,
+            channel=channel,
+            caption_or_body=text,
+            image_path=image_path,
+            status=ReviewStatus.PENDING,
+        )
+        session.add(new_draft)
+        session.commit()
+        session.refresh(new_draft)
+    return new_draft
+
+
 def generate_blog_comparison_draft(topic: str, products: list[Product]) -> ContentDraft:
     """네이버 블로그용 'OO 추천 TOP N' 비교 콘텐츠 초안 생성.
 
@@ -274,16 +327,7 @@ def generate_blog_comparison_draft(topic: str, products: list[Product]) -> Conte
         raise ValueError("products가 비어 있습니다")
 
     generator = BlogGenerator()
-    product_dicts = [
-        {
-            "name": p.name,
-            "category": p.category,
-            "price": p.price,
-            "product_url": p.product_url,
-            "source": p.source,
-        }
-        for p in products
-    ]
+    product_dicts = [_product_to_dict(p) for p in products]
     text = generator.generate_comparison(topic, product_dicts)
 
     with get_session() as session:

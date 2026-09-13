@@ -6,7 +6,7 @@ from autocpna.content_gen.base import ChannelGenerator
 class ThreadsGenerator(ChannelGenerator):
     channel = "threads"
 
-    def build_user_prompt(self, product: dict) -> str:
+    def build_user_prompt(self, product: dict, feedback: str = "") -> str:
         return (
             f"다음 상품에 대해 스레드(Threads) 게시글을 작성해줘.\n"
             f"상품명: {product['name']}\n"
@@ -18,4 +18,5 @@ class ThreadsGenerator(ChannelGenerator):
             f"- 500자 이내\n"
             f"- 마지막에 댓글을 유도하는 질문 1개\n"
             f"- 다음 제휴 고지 문구를 그대로 포함: \"{self.disclosure_text(product)}\""
+            f"{self.feedback_block(feedback)}"
         )

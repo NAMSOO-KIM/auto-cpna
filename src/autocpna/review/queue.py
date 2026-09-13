@@ -30,6 +30,15 @@ def list_pending() -> list[ContentDraft]:
         )
 
 
+def list_rejected() -> list[ContentDraft]:
+    with get_session() as session:
+        return (
+            session.query(ContentDraft)
+            .filter(ContentDraft.status == ReviewStatus.REJECTED)
+            .all()
+        )
+
+
 def update_content(
     draft_id: int,
     caption_or_body: str | None = None,

@@ -6,7 +6,7 @@ from autocpna.content_gen.base import ChannelGenerator
 class FacebookGenerator(ChannelGenerator):
     channel = "facebook"
 
-    def build_user_prompt(self, product: dict) -> str:
+    def build_user_prompt(self, product: dict, feedback: str = "") -> str:
         return (
             f"다음 상품으로 Facebook 페이지 게시글을 작성해줘.\n"
             f"상품명: {product['name']}\n"
@@ -18,4 +18,5 @@ class FacebookGenerator(ChannelGenerator):
             f"- 존댓말, 이웃에게 소개하듯 친근하지만 정중한 어투\n"
             f"- 본문 마지막에 링크를 별도 줄로 배치\n"
             f"- 다음 제휴 고지 문구를 그대로 포함: \"{self.disclosure_text(product)}\""
+            f"{self.feedback_block(feedback)}"
         )

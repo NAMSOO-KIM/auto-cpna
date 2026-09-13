@@ -83,11 +83,17 @@ autocpna review list
 # 4) 승인 (승인된 항목 중 requires_review=false 채널은 자동 발행됨)
 autocpna review approve <draft_id>
 
+# 4b) 반려 (사유를 남기면 재생성 시 그대로 반영됨)
+autocpna review reject <draft_id> --note "너무 광고 같아, 더 자연스럽게"
+
+# 4c) 반려된 초안을 반려 사유 반영해서 다시 생성 (새 PENDING 초안 추가, 기존 반려 이력은 유지)
+autocpna review regenerate <draft_id>
+
 # 5) 발행 (auto 채널은 approve 시 자동 실행되지만, 수동 트리거도 가능)
 autocpna publish --draft-id <draft_id>
 ```
 
-검수는 CLI 대신 `streamlit run dashboard/app.py` 로 상품 정보(이름/가격/카테고리/제휴 프로그램/점수)와 이미지+카피를 함께 보면서 본문/해시태그를 직접 수정한 뒤 승인/반려할 수도 있습니다 (승인 버튼을 누르면 화면에 입력된 수정 내용이 먼저 저장됩니다). 채널별 필터와 최근 발행 로그(성공/실패)도 대시보드에서 확인 가능합니다. CLI에서는 `autocpna review edit <draft_id> --body "..." --hashtags "..."`로 동일하게 수정 가능합니다.
+검수는 CLI 대신 `streamlit run dashboard/app.py` 로 상품 정보(이름/가격/카테고리/제휴 프로그램/점수)와 이미지+카피를 함께 보면서 본문/해시태그를 직접 수정한 뒤 승인/반려할 수도 있습니다 (승인 버튼을 누르면 화면에 입력된 수정 내용이 먼저 저장됩니다). 채널별 필터, 반려 사유 입력, 반려된 초안 재생성, 최근 발행 로그(성공/실패)도 대시보드에서 확인 가능합니다. CLI에서는 `autocpna review edit <draft_id> --body "..." --hashtags "..."`로 동일하게 수정 가능합니다.
 
 ## 필요한 API 키 (.env)
 

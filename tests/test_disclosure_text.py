@@ -44,3 +44,26 @@ def test_instagram_prompt_embeds_correct_disclosure(monkeypatch):
 
     assert "쇼핑커넥트" in prompt
     assert "쿠팡파트너스" not in prompt
+
+
+def test_feedback_block_empty_when_no_feedback(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    generator = InstagramGenerator()
+
+    assert generator.feedback_block("") == ""
+
+
+def test_feedback_block_included_in_prompt_when_present(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    generator = InstagramGenerator()
+    product = {
+        "name": "무선 이어폰",
+        "category": "이어폰",
+        "price": 39000,
+        "product_url": "https://example.com",
+        "source": "coupang_partners",
+    }
+
+    prompt = generator.build_user_prompt(product, feedback="너무 과장됐어, 톤 낮춰줘")
+
+    assert "너무 과장됐어, 톤 낮춰줘" in prompt
