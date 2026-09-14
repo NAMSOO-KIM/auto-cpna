@@ -120,23 +120,28 @@ def collect_and_score(keyword: str = "", top_n: int = 20) -> list[Product]:
 
     saved: list[Product] = []
     with get_session() as session:
+        external_ids = [data["external_id"] for data, _ in ranked]
+        existing_by_external_id = {
+            p.external_id: p
+            for p in session.query(Product).filter(Product.external_id.in_(external_ids)).all()
+        }
         for data, breakdown in ranked:
-            product = Product(
-                external_id=data["external_id"],
-                source=data.get("source", "coupang_partners"),
-                name=data["name"],
-                category=data["category"],
-                price=data["price"],
-                margin_rate=data.get("margin_rate", 0.0),
-                search_volume=data.get("search_volume", 0.0),
-                trend_momentum=data.get("trend_momentum", 0.0),
-                conversion_rate=data.get("conversion_rate", 0.0),
-                seasonality_fit=data.get("seasonality_fit", 0.0),
-                product_url=data.get("product_url", ""),
-                image_url=data.get("image_url", ""),
-                score=breakdown.total,
-            )
-            session.add(product)
+            product = existing_by_external_id.get(data["external_id"])
+            if product is None:
+                product = Product(external_id=data["external_id"])
+                session.add(product)
+            product.source = data.get("source", "coupang_partners")
+            product.name = data["name"]
+            product.category = data["category"]
+            product.price = data["price"]
+            product.margin_rate = data.get("margin_rate", 0.0)
+            product.search_volume = data.get("search_volume", 0.0)
+            product.trend_momentum = data.get("trend_momentum", 0.0)
+            product.conversion_rate = data.get("conversion_rate", 0.0)
+            product.seasonality_fit = data.get("seasonality_fit", 0.0)
+            product.product_url = data.get("product_url", "")
+            product.image_url = data.get("image_url", "")
+            product.score = breakdown.total
             saved.append(product)
         session.commit()
         for p in saved:
@@ -252,14 +257,36 @@ def _generate_channel_content(product: Product, channel: str, feedback: str = ""
     return text, image_path
 
 
+_ACTIVE_DRAFT_STATUSES = (ReviewStatus.PENDING, ReviewStatus.APPROVED, ReviewStatus.PUBLISHED)
+
+
 def generate_drafts(product: Product, channels: list[str] | None = None) -> list[ContentDraft]:
-    """상품 하나에 대해 채널별 콘텐츠 초안을 생성하고 검수 대기열에 넣는다."""
+    """상품 하나에 대해 채널별 콘텐츠 초안을 생성하고 검수 대기열에 넣는다.
+
+    이미 검수 대기/승인/발행 상태인 초안이 있는 (product, channel) 조합은
+    건너뛴다. `autocpna generate`는 매번 DB에 저장된 상위 N개 상품을 다시
+    조회하므로, 이 스킵이 없으면 같은 상품이 계속 상위권에 남아있는 동안
+    반복 실행할 때마다 중복 초안이 쌓인다. 반려된 초안만 있는 경우는
+    regenerate_draft가 처리하는 별도 경로이므로 여기서는 새로 생성한다.
+    """
     channels_cfg = get_channels_config()
     channels = channels or [c for c, cfg in channels_cfg.items() if cfg.get("enabled")]
 
+    with get_session() as session:
+        already_active = {
+            d.channel
+            for d in session.query(ContentDraft)
+            .filter(
+                ContentDraft.product_id == product.id,
+                ContentDraft.status.in_(_ACTIVE_DRAFT_STATUSES),
+            )
+            .all()
+        }
+    channels_to_generate = [c for c in channels if c not in already_active]
+
     drafts: list[ContentDraft] = []
     with get_session() as session:
-        for channel in channels:
+        for channel in channels_to_generate:
             text, image_path = _generate_channel_content(product, channel)
             draft = ContentDraft(
                 product_id=product.id,
