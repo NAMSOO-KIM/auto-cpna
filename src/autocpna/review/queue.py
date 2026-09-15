@@ -8,12 +8,17 @@ from autocpna.db import get_session
 from autocpna.models.content_draft import ContentDraft, ReviewStatus
 
 
-def _should_auto_publish(channel: str) -> bool:
+def should_auto_publish(channel: str) -> bool:
     """channels.yaml 기준으로 승인 즉시 자동 발행할지 판단.
 
     requires_review가 true(기본값)면 항상 사람이 별도로 publish를 트리거해야
     한다. auto_publish는 naver_blog처럼 코드 레벨에서도 자동 발행을 한 번 더
     강제 차단하려는 채널을 위한 보조 플래그 (기본값 true).
+
+    대시보드/CLI가 승인 후 안내 문구를 고를 때도 이 함수로 "자동 발행이
+    시도되는 채널인지"를 판단한다 - 그래야 자동 발행이 실패했을 때 "수동으로
+    발행하세요"가 아니라 "자동 발행을 시도했지만 실패했다"고 정확히 알릴 수
+    있다 (둘 다 승인 후 status는 APPROVED로 남아 구분이 안 되기 때문).
     """
     channel_cfg = get_channels_config().get(channel, {})
     if channel_cfg.get("requires_review", True):
@@ -72,7 +77,7 @@ def approve(draft_id: int, note: str = "") -> ContentDraft:
         session.refresh(draft)
         channel = draft.channel
 
-    if _should_auto_publish(channel):
+    if should_auto_publish(channel):
         from autocpna.pipeline.orchestrator import publish_approved_draft
 
         publish_approved_draft(draft_id)

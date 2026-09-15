@@ -128,8 +128,24 @@ def review_edit(draft_id: int, body: str | None, hashtags: str | None) -> None:
 @click.argument("draft_id", type=int)
 @click.option("--note", default="")
 def review_approve(draft_id: int, note: str) -> None:
-    review_queue.approve(draft_id, note)
-    click.echo(f"#{draft_id} 승인됨")
+    from autocpna.db import get_session
+    from autocpna.models.publish_log import PublishLog
+
+    draft = review_queue.approve(draft_id, note)
+    if draft.status.value == "published":
+        click.echo(f"#{draft_id} 승인 및 자동 발행 완료")
+    elif review_queue.should_auto_publish(draft.channel):
+        with get_session() as session:
+            last_log = (
+                session.query(PublishLog)
+                .filter(PublishLog.draft_id == draft_id)
+                .order_by(PublishLog.published_at.desc())
+                .first()
+            )
+        detail = f": {last_log.error_message}" if last_log else ""
+        click.echo(f"#{draft_id} 승인됨, 자동 발행 시도했지만 실패{detail}")
+    else:
+        click.echo(f"#{draft_id} 승인됨 (발행은 별도로 트리거 필요)")
 
 
 @review.command("reject")

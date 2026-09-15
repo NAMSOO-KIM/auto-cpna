@@ -104,6 +104,21 @@ for draft in pending:
             approved = review_queue.approve(draft.id)
             if approved.status == ReviewStatus.PUBLISHED:
                 st.success("승인 및 자동 발행 완료")
+            elif review_queue.should_auto_publish(approved.channel):
+                # 자동 발행 채널인데 여전히 APPROVED라는 건 발행이 시도됐지만
+                # 실패했다는 뜻 (publish_approved_draft가 실패해도 상태를 그대로
+                # 둔다) - "수동으로 트리거하세요"라고 하면 이미 시도했다가
+                # 실패한 사실을 숨기게 되므로, PublishLog에서 실제 실패 사유를
+                # 찾아 보여준다.
+                with get_session() as session:
+                    last_log = (
+                        session.query(PublishLog)
+                        .filter(PublishLog.draft_id == approved.id)
+                        .order_by(PublishLog.published_at.desc())
+                        .first()
+                    )
+                error_detail = f": {last_log.error_message}" if last_log else ""
+                st.error(f"승인됨, 자동 발행 시도했지만 실패{error_detail}")
             else:
                 st.success("승인됨 (발행은 별도로 트리거 필요)")
             st.rerun()
