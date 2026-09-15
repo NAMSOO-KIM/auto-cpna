@@ -37,7 +37,9 @@ from autocpna.db import get_session, init_db  # noqa: E402
 from autocpna.models.content_draft import ReviewStatus  # noqa: E402
 from autocpna.models.product import Product  # noqa: E402
 from autocpna.models.publish_log import PublishLog  # noqa: E402
-from autocpna.config import get_channels_config  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
+
+from autocpna.config import get_channels_config, get_settings  # noqa: E402
 from autocpna.pipeline.orchestrator import (  # noqa: E402
     GENERATION_FAILURES,
     generate_drafts,
@@ -82,7 +84,29 @@ def flash(message: str, icon: str | None = None) -> None:
     st.session_state.setdefault(_FLASH_KEY, []).append((message, icon))
 
 
+def _database_status() -> tuple[str, bool]:
+    """(표시용 DB 위치, 영구 저장 여부). 비밀번호가 화면에 찍히지 않도록
+    URL에서 스킴과 호스트만 뽑아 쓴다."""
+    url = make_url(get_settings().database_url)
+    backend = url.get_backend_name()
+    if backend == "sqlite":
+        return f"sqlite ({url.database})", False
+    return f"{backend} @ {url.host}", True
+
+
 st.title("콘텐츠 검수 대기열")
+
+_db_label, _db_persistent = _database_status()
+if _db_persistent:
+    st.caption(f"DB: {_db_label}")
+else:
+    # Streamlit Community Cloud는 컨테이너 파일시스템이 재시작마다 초기화된다.
+    # sqlite로 돌고 있으면 검수 대기 중이던 초안이 예고 없이 사라지므로 알린다.
+    st.warning(
+        f"DB: {_db_label} — 재시작 시 초기화됩니다. 배포 환경에서 계속 쓰시려면 "
+        "Secrets에 `DATABASE_URL`(Postgres)을 설정하세요.",
+        icon="⚠️",
+    )
 
 for _message, _icon in st.session_state.pop(_FLASH_KEY, []):
     st.toast(_message, icon=_icon)
