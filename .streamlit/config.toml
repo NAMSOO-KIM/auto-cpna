@@ -1,0 +1,11 @@
+# Streamlit Community Cloud에 올린 앱은 URL을 아는 사람이면 누구나 열 수 있다.
+# 기본 설정은 처리되지 않은 예외를 화면에 파이썬 트레이스백으로 그려서 소스
+# 절대경로와 내부 구조가 그대로 노출되므로, 화면에는 에러 종류만 남긴다.
+# 전체 트레이스백은 여전히 서버 로그(Streamlit Cloud의 "Manage app" 로그)에
+# 남으니 디버깅에는 지장이 없다.
+[client]
+showErrorDetails = "type"
+
+[server]
+# 검수 화면은 초안 텍스트만 다루고 파일 업로드를 쓰지 않는다.
+maxUploadSize = 5

@@ -28,7 +28,10 @@ from autocpna.db import get_session, init_db  # noqa: E402
 from autocpna.models.content_draft import ReviewStatus  # noqa: E402
 from autocpna.models.product import Product  # noqa: E402
 from autocpna.models.publish_log import PublishLog  # noqa: E402
-from autocpna.pipeline.orchestrator import regenerate_draft  # noqa: E402
+from autocpna.pipeline.orchestrator import (  # noqa: E402
+    GENERATION_FAILURES,
+    regenerate_draft,
+)
 from autocpna.review import queue as review_queue  # noqa: E402
 
 st.set_page_config(page_title="auto-cpna 검수", layout="wide")
@@ -53,7 +56,24 @@ def _product_caption(product) -> str:
     )
 
 
+_FLASH_KEY = "_flash_messages"
+
+
+def flash(message: str, icon: str | None = None) -> None:
+    """st.rerun() 이후에도 살아남는 안내 메시지를 예약한다.
+
+    st.success/st.toast를 st.rerun() 직전에 호출하면 rerun이 스크립트를 처음부터
+    다시 그리면서 그 메시지가 통째로 버려져, 저장/승인/재생성을 눌러도 사람은
+    아무 확인 메시지를 못 본다. 그래서 session_state에 담아 두고 다음 렌더의
+    맨 위에서 출력한다.
+    """
+    st.session_state.setdefault(_FLASH_KEY, []).append((message, icon))
+
+
 st.title("콘텐츠 검수 대기열")
+
+for _message, _icon in st.session_state.pop(_FLASH_KEY, []):
+    st.toast(_message, icon=_icon)
 
 pending = review_queue.list_pending()
 
@@ -92,7 +112,7 @@ for draft in pending:
                 caption_or_body=st.session_state[body_key],
                 hashtags=st.session_state[hashtags_key],
             )
-            st.success("저장됨")
+            flash("저장됨")
             st.rerun()
 
         if col2.button("승인", key=f"approve_{draft.id}"):
@@ -103,7 +123,7 @@ for draft in pending:
             )
             approved = review_queue.approve(draft.id)
             if approved.status == ReviewStatus.PUBLISHED:
-                st.success("승인 및 자동 발행 완료")
+                flash("승인 및 자동 발행 완료")
             elif review_queue.should_auto_publish(approved.channel):
                 # 자동 발행 채널인데 여전히 APPROVED라는 건 발행이 시도됐지만
                 # 실패했다는 뜻 (publish_approved_draft가 실패해도 상태를 그대로
@@ -118,9 +138,9 @@ for draft in pending:
                         .first()
                     )
                 error_detail = f": {last_log.error_message}" if last_log else ""
-                st.error(f"승인됨, 자동 발행 시도했지만 실패{error_detail}")
+                flash(f"승인됨, 자동 발행 시도했지만 실패{error_detail}", icon="⚠️")
             else:
-                st.success("승인됨 (발행은 별도로 트리거 필요)")
+                flash("승인됨 (발행은 별도로 트리거 필요)")
             st.rerun()
 
         if col3.button("반려", key=f"reject_{draft.id}"):
@@ -146,10 +166,18 @@ else:
             st.text(draft.caption_or_body[:200] + ("..." if len(draft.caption_or_body) > 200 else ""))
 
             if st.button("재생성", key=f"regenerate_{draft.id}"):
-                with st.spinner("반려 사유를 반영해 다시 생성 중..."):
-                    new_draft = regenerate_draft(draft.id)
-                st.success(f"#{new_draft.id}로 재생성되어 검수 대기열에 추가됨")
-                st.rerun()
+                # 재생성은 외부 API(Claude, 이미지 생성, Cloudinary)를 타므로
+                # 실패가 정상적으로 발생한다. 그대로 두면 Streamlit이 화면에
+                # 파이썬 트레이스백을 그려서 절대 경로까지 노출되므로, 운영상
+                # 발생하는 실패는 사유만 보여준다(코드 버그는 그대로 터뜨림).
+                try:
+                    with st.spinner("반려 사유를 반영해 다시 생성 중..."):
+                        new_draft = regenerate_draft(draft.id)
+                except GENERATION_FAILURES as exc:
+                    st.error(f"재생성 실패 ({type(exc).__name__}): {exc}")
+                else:
+                    flash(f"#{new_draft.id}로 재생성되어 검수 대기열에 추가됨")
+                    st.rerun()
 
 st.divider()
 st.subheader("최근 발행 로그")
