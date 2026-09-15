@@ -56,6 +56,28 @@ PUBLISHERS: dict[str, Publisher] = {
 }
 
 
+def _fetch_trend_metrics(keyword: str) -> tuple[float, float]:
+    """데이터랩 검색 트렌드로 (search_volume, trend_momentum)을 계산.
+
+    키워드가 없거나 API 호출이 실패하면 (0.0, 0.0)으로 폴백한다 - 바로 뒤에
+    호출되는 _fetch_seasonality_fit이 같은 API의 실패를 이미 그렇게 처리하는데,
+    이 조회만 무방비로 두면 데이터랩이 죽었을 때 상품 등록/수집 자체가 통째로
+    실패한다. 트렌드 점수는 없으면 0점으로 깎이면 그만인 보조 지표다.
+    """
+    if not keyword:
+        return 0.0, 0.0
+    try:
+        trend_results = NaverDatalabClient().fetch(keywords=[keyword])
+    except httpx.HTTPError:
+        return 0.0, 0.0
+    if not trend_results:
+        return 0.0, 0.0
+    return (
+        normalize_search_volume(trend_results[0]["search_volume"]),
+        normalize_trend_momentum(trend_results[0]["trend_momentum"]),
+    )
+
+
 def _fetch_seasonality_fit(keyword: str, reference_month: int | None = None) -> float:
     """데이터랩 월별 시계열로 계절성 점수를 계산. 키워드가 없거나 API 호출이
     실패하면(신규 키워드라 히스토리가 없는 경우 포함) 0.0으로 안전하게 폴백."""
@@ -99,14 +121,7 @@ def collect_and_score(keyword: str = "", top_n: int = 20) -> list[Product]:
     """
     raw_products = CoupangPartnersClient().fetch(keyword=keyword)
 
-    search_volume = 0.0
-    trend_momentum = 0.0
-    if keyword:
-        trend_results = NaverDatalabClient().fetch(keywords=[keyword])
-        if trend_results:
-            search_volume = normalize_search_volume(trend_results[0]["search_volume"])
-            trend_momentum = normalize_trend_momentum(trend_results[0]["trend_momentum"])
-
+    search_volume, trend_momentum = _fetch_trend_metrics(keyword)
     seasonality_fit = _fetch_seasonality_fit(keyword)
     conversion_rate = _fetch_account_conversion_rate()
 
@@ -175,13 +190,7 @@ def register_manual_product(
     config 기본값으로 대체됨). 사람이 이미 골라서 등록하는 상품이므로
     collect_and_score와 달리 min_score_threshold 필터링은 적용하지 않는다.
     """
-    search_volume = 0.0
-    trend_momentum = 0.0
-    if keyword:
-        trend_results = NaverDatalabClient().fetch(keywords=[keyword])
-        if trend_results:
-            search_volume = normalize_search_volume(trend_results[0]["search_volume"])
-            trend_momentum = normalize_trend_momentum(trend_results[0]["trend_momentum"])
+    search_volume, trend_momentum = _fetch_trend_metrics(keyword)
     seasonality_fit = _fetch_seasonality_fit(keyword)
 
     breakdown = ScoringEngine().score(

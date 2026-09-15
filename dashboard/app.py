@@ -37,9 +37,12 @@ from autocpna.db import get_session, init_db  # noqa: E402
 from autocpna.models.content_draft import ReviewStatus  # noqa: E402
 from autocpna.models.product import Product  # noqa: E402
 from autocpna.models.publish_log import PublishLog  # noqa: E402
+from autocpna.config import get_channels_config  # noqa: E402
 from autocpna.pipeline.orchestrator import (  # noqa: E402
     GENERATION_FAILURES,
+    generate_drafts,
     regenerate_draft,
+    register_manual_product,
 )
 from autocpna.review import queue as review_queue  # noqa: E402
 
@@ -83,6 +86,60 @@ st.title("콘텐츠 검수 대기열")
 
 for _message, _icon in st.session_state.pop(_FLASH_KEY, []):
     st.toast(_message, icon=_icon)
+
+with st.expander("➕ 새 상품 등록하고 초안 생성", expanded=False):
+    st.caption(
+        "배포된 대시보드에서는 CLI(autocpna add-product / generate)를 쓸 수 없으므로, "
+        "상품 등록부터 초안 생성까지 여기서 처리한다. 링크와 수수료율은 제휴 사이트에서 "
+        "직접 확인한 값을 넣을 것."
+    )
+    enabled_channels = [c for c, cfg in get_channels_config().items() if cfg.get("enabled")]
+
+    with st.form("new_product"):
+        name = st.text_input("상품명")
+        category = st.text_input("카테고리")
+        price = st.number_input("가격(원)", min_value=0, step=1000, value=0)
+        product_url = st.text_input("상품 링크 (제휴 링크)")
+        margin_rate = st.number_input(
+            "수수료율", min_value=0.0, max_value=1.0, step=0.01, value=0.03,
+            help="0.03 = 3%",
+        )
+        source = st.selectbox(
+            "제휴 프로그램",
+            list(SOURCE_LABELS),
+            format_func=lambda s: SOURCE_LABELS[s],
+            help="콘텐츠에 들어갈 제휴 고지 문구가 이 값에 따라 달라진다",
+        )
+        keyword = st.text_input("트렌드 조회 키워드 (선택)")
+        channels = st.multiselect("생성할 채널", enabled_channels, default=enabled_channels)
+        submitted = st.form_submit_button("등록하고 초안 생성", width="stretch", type="primary")
+
+    if submitted:
+        if not (name and category and product_url):
+            st.error("상품명 / 카테고리 / 상품 링크는 필수입니다.")
+        elif price <= 0:
+            # 0원으로 두면 생성기가 가격을 못 쓰고 "가격 정보가 없다"고 에두르는
+            # 본문이 나온다(추측 금지 규칙). 호출 비용만 쓰고 버리게 되므로 막는다.
+            st.error("가격을 입력하세요. 0원이면 가격을 뺀 어정쩡한 본문이 생성됩니다.")
+        else:
+            with st.spinner("상품 등록 후 채널별 초안 생성 중..."):
+                product = register_manual_product(
+                    name=name,
+                    category=category,
+                    price=float(price),
+                    product_url=product_url,
+                    margin_rate=float(margin_rate),
+                    source=source,
+                    keyword=keyword,
+                )
+                result = generate_drafts(product, channels=channels or None)
+            for channel, reason in result.failures.items():
+                st.warning(f"[{channel}] 생성 실패: {reason}")
+            flash(f"상품 #{product.id} 등록, 초안 {len(result.drafts)}개 생성됨")
+            if not result.failures:
+                st.rerun()
+
+st.divider()
 
 pending = review_queue.list_pending()
 
