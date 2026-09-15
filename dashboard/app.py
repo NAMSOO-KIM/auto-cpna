@@ -104,9 +104,13 @@ for draft in pending:
         st.text_input("해시태그", draft.hashtags, key=hashtags_key)
         st.text_input("반려 사유 (반려 시 입력, 재생성에 반영됨)", key=reject_note_key)
 
-        col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
+        # Streamlit은 화면이 좁으면(폰) 컬럼을 세로로 쌓는다. 버튼을 기본
+        # 크기로 두면 그때 54px짜리 작은 버튼 3개가 각각 한 줄씩 차지해서
+        # 엄지로 누르기 불편하므로, width="stretch"로 각 칸을 꽉 채운다.
+        # 데스크톱에서는 그대로 가로 3분할이라 레이아웃이 깨지지 않는다.
+        col1, col2, col3 = st.columns(3)
 
-        if col1.button("저장", key=f"save_{draft.id}"):
+        if col1.button("저장", key=f"save_{draft.id}", width="stretch"):
             review_queue.update_content(
                 draft.id,
                 caption_or_body=st.session_state[body_key],
@@ -115,7 +119,7 @@ for draft in pending:
             flash("저장됨")
             st.rerun()
 
-        if col2.button("승인", key=f"approve_{draft.id}"):
+        if col2.button("승인", key=f"approve_{draft.id}", width="stretch", type="primary"):
             review_queue.update_content(
                 draft.id,
                 caption_or_body=st.session_state[body_key],
@@ -143,7 +147,7 @@ for draft in pending:
                 flash("승인됨 (발행은 별도로 트리거 필요)")
             st.rerun()
 
-        if col3.button("반려", key=f"reject_{draft.id}"):
+        if col3.button("반려", key=f"reject_{draft.id}", width="stretch"):
             review_queue.reject(draft.id, note=st.session_state[reject_note_key])
             st.rerun()
 
@@ -165,7 +169,7 @@ else:
                 st.caption(f"반려 사유: {draft.reviewer_note}")
             st.text(draft.caption_or_body[:200] + ("..." if len(draft.caption_or_body) > 200 else ""))
 
-            if st.button("재생성", key=f"regenerate_{draft.id}"):
+            if st.button("재생성", key=f"regenerate_{draft.id}", width="stretch"):
                 # 재생성은 외부 API(Claude, 이미지 생성, Cloudinary)를 타므로
                 # 실패가 정상적으로 발생한다. 그대로 두면 Streamlit이 화면에
                 # 파이썬 트레이스백을 그려서 절대 경로까지 노출되므로, 운영상
