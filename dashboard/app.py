@@ -38,6 +38,7 @@ from autocpna.models.content_draft import ReviewStatus  # noqa: E402
 from autocpna.models.product import Product  # noqa: E402
 from autocpna.models.publish_log import PublishLog  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
+from sqlalchemy.exc import OperationalError  # noqa: E402
 
 from autocpna.config import get_channels_config, get_settings  # noqa: E402
 from autocpna.pipeline.orchestrator import (  # noqa: E402
@@ -49,7 +50,26 @@ from autocpna.pipeline.orchestrator import (  # noqa: E402
 from autocpna.review import queue as review_queue  # noqa: E402
 
 st.set_page_config(page_title="auto-cpna 검수", layout="wide")
-init_db()
+
+try:
+    init_db()
+except (OperationalError, ModuleNotFoundError) as exc:
+    # DATABASE_URL을 새로 붙이는 시점에 가장 흔하게 터지는 지점인데, 배포
+    # 환경에서는 트레이스백을 숨기도록 해놔서(.streamlit/config.toml) 그대로
+    # 두면 화면에 예외 종류만 뜨고 원인을 알 수 없다. 흔한 원인을 같이 안내한다.
+    # DB URL은 비밀번호가 들어 있으므로 화면에 찍지 않는다.
+    st.error(
+        "데이터베이스에 연결하지 못했습니다.\n\n"
+        "자주 발생하는 원인:\n"
+        "- Supabase의 Direct connection(db.xxx.supabase.co) 사용 "
+        "→ IPv6 전용이라 실패합니다. Session pooler 주소(pooler.supabase.com:5432)를 쓰세요.\n"
+        "- 비밀번호의 특수문자(@ : / # 등)를 URL 인코딩하지 않음 "
+        "→ @는 %40, #은 %23 으로 바꿔야 합니다.\n"
+        "- 비밀번호에 `[YOUR-PASSWORD]` 자리표시자가 그대로 남아 있음\n"
+        "- Postgres 드라이버 미설치 → `pip install -r requirements.txt`\n\n"
+        f"드라이버 메시지: {type(exc).__name__}"
+    )
+    st.stop()
 
 SOURCE_LABELS = {
     "coupang_partners": "쿠팡파트너스",
