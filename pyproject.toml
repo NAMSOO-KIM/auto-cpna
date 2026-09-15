@@ -11,6 +11,9 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "pyyaml>=6.0",
     "click>=8.1.0",
+    # DATABASE_URL을 Postgres로 지정할 수 있다고 문서화해 뒀지만 드라이버가
+    # 없으면 연결 시점에 ModuleNotFoundError로 죽는다.
+    "psycopg2-binary>=2.9.9",
 ]
 
 [project.optional-dependencies]

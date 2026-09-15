@@ -9,8 +9,17 @@
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 import streamlit as st
+
+# 소스가 src/ 레이아웃이라 패키지를 설치하지 않으면 `import autocpna`가 안 된다.
+# Streamlit Community Cloud는 requirements.txt의 의존성만 설치하고 저장소 자체를
+# pip install 하지는 않으므로, 체크아웃만 된 상태에서도 임포트가 되도록 src를
+# 직접 경로에 추가한다. 로컬에서 `pip install -e .`로 설치한 경우에는 이미
+# 임포트가 되므로 이 줄이 동작을 바꾸지 않는다.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 # Streamlit Community Cloud의 "Secrets"는 st.secrets로만 노출되고 일반
 # 환경변수로는 자동 전달되지 않는다. config.py는 pydantic-settings로 os

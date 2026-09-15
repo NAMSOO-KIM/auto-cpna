@@ -1,0 +1,17 @@
+# Streamlit Community Cloud가 배포할 때 읽는 의존성 파일.
+# pyproject.toml은 setuptools(PEP 621) 형식이라 Streamlit Cloud의 의존성
+# 자동 인식이 보장되지 않으므로, 배포용으로 런타임 의존성을 명시해 둔다.
+# 저장소 자체는 설치되지 않지만 dashboard/app.py가 src를 경로에 추가한다.
+streamlit>=1.35.0
+anthropic>=0.40.0
+httpx>=0.27.0
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+sqlalchemy>=2.0.0
+pyyaml>=6.0
+click>=8.1.0
+
+# DATABASE_URL을 Postgres로 지정할 때 필요한 드라이버. Streamlit Cloud는
+# 컨테이너 파일시스템이 재시작마다 초기화돼서 기본값인 sqlite 파일을 쓰면
+# 검수 대기 중이던 초안이 사라진다.
+psycopg2-binary>=2.9.9
