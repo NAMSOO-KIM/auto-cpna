@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from autocpna.content_gen.base import MODEL, ChannelGenerator
+from autocpna.content_gen.base import ChannelGenerator
 
 
 class BlogGenerator(ChannelGenerator):
@@ -52,15 +52,4 @@ class BlogGenerator(ChannelGenerator):
         )
 
     def generate_comparison(self, topic: str, products: list[dict], feedback: str = "") -> str:
-        message = self._client.messages.create(
-            model=MODEL,
-            max_tokens=2048,
-            system=self._build_system_prompt(),
-            messages=[
-                {
-                    "role": "user",
-                    "content": self.build_comparison_prompt(topic, products, feedback),
-                }
-            ],
-        )
-        return message.content[0].text
+        return self.complete(self.build_comparison_prompt(topic, products, feedback))

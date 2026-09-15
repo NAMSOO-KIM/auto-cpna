@@ -7,7 +7,14 @@ import anthropic
 
 from autocpna.config import get_personas_config, get_settings
 
-MODEL = "claude-sonnet-4-5"
+MODEL = "claude-opus-5"
+
+# 네이버 블로그 프롬프트는 1200~2200자 분량을 요구하는데, 한국어는 토큰당
+# 글자 수가 영어보다 훨씬 적어서(대략 글자수의 1~1.5배가 토큰수) 1024~2048
+# 토큰으로는 본문이 중간에 잘린다. 잘리면 프롬프트가 "본문 하단에" 넣으라고
+# 지시한 제휴 고지 문구가 통째로 사라져서, 고지 없는 초안이 검수 큐에 올라간다.
+# 출력 토큰은 실제 생성량만 과금되므로 상한을 넉넉히 둬도 비용은 늘지 않는다.
+MAX_TOKENS = 16000
 
 # 제휴 프로그램별 실제 고지 문구. product["source"]로 어떤 프로그램인지 구분해
 # 골라 쓴다 - 예를 들어 네이버 쇼핑커넥트 상품에 "#쿠팡파트너스"라고 잘못
@@ -17,6 +24,28 @@ DISCLOSURE_TEXT: dict[str, str] = {
     "naver_shopping_connect": "이 포스팅은 네이버 쇼핑커넥트를 통해 일정액의 수수료를 제공받을 수 있습니다.",
 }
 DEFAULT_SOURCE = "coupang_partners"
+
+
+def extract_text(message) -> str:
+    """응답에서 text 블록만 모아 반환.
+
+    content[0]이 text 블록이라고 가정할 수 없다 - adaptive thinking이 기본으로
+    켜진 모델은 thinking 블록을 먼저 내보내고, 그 블록에는 .text 자체가 없어서
+    content[0].text가 AttributeError로 터진다.
+
+    stop_reason이 max_tokens면 본문이 중간에 잘린 것이다. 잘린 초안은 제휴 고지
+    문구가 빠져 있을 수 있어 그대로 검수 큐에 넣으면 안 되므로 명시적으로 막는다.
+    """
+    if message.stop_reason == "max_tokens":
+        raise RuntimeError(
+            f"생성 본문이 max_tokens({MAX_TOKENS})에서 잘렸습니다. 제휴 고지 문구가 "
+            "누락됐을 수 있어 초안으로 쓰지 않습니다. 프롬프트의 분량 요구를 줄이거나 "
+            "MAX_TOKENS를 올리세요."
+        )
+    texts = [block.text for block in message.content if block.type == "text"]
+    if not texts:
+        raise RuntimeError(f"응답에 text 블록이 없습니다 (stop_reason={message.stop_reason})")
+    return "".join(texts)
 
 
 class ChannelGenerator(ABC):
@@ -55,11 +84,15 @@ class ChannelGenerator(ABC):
         feedback_block()으로 프롬프트 끝에 반영해야 한다."""
         raise NotImplementedError
 
-    def generate(self, product: dict, feedback: str = "") -> str:
+    def complete(self, user_prompt: str) -> str:
+        """user_prompt로 본문을 생성한다. generate/generate_comparison 공용 경로."""
         message = self._client.messages.create(
             model=MODEL,
-            max_tokens=1024,
+            max_tokens=MAX_TOKENS,
             system=self._build_system_prompt(),
-            messages=[{"role": "user", "content": self.build_user_prompt(product, feedback)}],
+            messages=[{"role": "user", "content": user_prompt}],
         )
-        return message.content[0].text
+        return extract_text(message)
+
+    def generate(self, product: dict, feedback: str = "") -> str:
+        return self.complete(self.build_user_prompt(product, feedback))
