@@ -1,5 +1,4 @@
 import httpx
-import pytest
 
 from autocpna.pipeline.orchestrator import (
     _fetch_account_conversion_rate,
