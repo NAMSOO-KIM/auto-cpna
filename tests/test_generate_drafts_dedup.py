@@ -23,11 +23,11 @@ def test_second_call_skips_channel_with_pending_draft(fresh_db, monkeypatch):
     )
     product = _make_product(fresh_db)
 
-    first_drafts = generate_drafts(product, channels=["threads"])
-    assert len(first_drafts) == 1
+    first = generate_drafts(product, channels=["threads"])
+    assert len(first.drafts) == 1
 
-    second_drafts = generate_drafts(product, channels=["threads"])
-    assert second_drafts == []
+    second = generate_drafts(product, channels=["threads"])
+    assert second.drafts == []
 
     with get_session() as session:
         count = (
@@ -45,14 +45,14 @@ def test_rejected_draft_does_not_block_new_generation(fresh_db, monkeypatch):
     )
     product = _make_product(fresh_db)
 
-    [first_draft] = generate_drafts(product, channels=["threads"])
+    [first_draft] = generate_drafts(product, channels=["threads"]).drafts
     with get_session() as session:
         draft = session.get(ContentDraft, first_draft.id)
         draft.status = ReviewStatus.REJECTED
         session.commit()
 
-    second_drafts = generate_drafts(product, channels=["threads"])
-    assert len(second_drafts) == 1
+    second = generate_drafts(product, channels=["threads"])
+    assert len(second.drafts) == 1
 
 
 def test_only_missing_channel_is_generated(fresh_db, monkeypatch):
@@ -67,7 +67,7 @@ def test_only_missing_channel_is_generated(fresh_db, monkeypatch):
     product = _make_product(fresh_db)
 
     generate_drafts(product, channels=["threads"])
-    second_drafts = generate_drafts(product, channels=["threads", "facebook"])
+    second = generate_drafts(product, channels=["threads", "facebook"])
 
-    assert len(second_drafts) == 1
-    assert second_drafts[0].channel == "facebook"
+    assert len(second.drafts) == 1
+    assert second.drafts[0].channel == "facebook"

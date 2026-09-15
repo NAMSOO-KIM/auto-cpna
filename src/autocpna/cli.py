@@ -33,17 +33,36 @@ def score(keyword: str, top_n: int) -> None:
 
 @cli.command()
 @click.option("--top", "top_n", default=10, help="점수 상위 몇 개 상품에 콘텐츠 생성할지")
-def generate(top_n: int) -> None:
-    """점수 상위 상품에 대해 채널별 콘텐츠 초안 생성."""
+@click.option(
+    "--channel",
+    "channels",
+    multiple=True,
+    help="생성할 채널 (여러 번 지정 가능). 생략하면 channels.yaml의 enabled 채널 전부",
+)
+def generate(top_n: int, channels: tuple[str, ...]) -> None:
+    """점수 상위 상품에 대해 채널별 콘텐츠 초안 생성.
+
+    채널 하나가 실패해도(이미지 생성 API 장애 등) 나머지 채널/상품은 계속
+    생성하고, 실패한 채널만 사유와 함께 마지막에 모아서 보여준다.
+    """
     from autocpna.db import get_session
 
     with get_session() as session:
         products = (
             session.query(Product).order_by(Product.score.desc()).limit(top_n).all()
         )
-        for product in products:
-            drafts = generate_drafts(product)
-            click.echo(f"{product.name}: {len(drafts)}개 초안 생성")
+
+    all_failures: list[str] = []
+    for product in products:
+        result = generate_drafts(product, channels=list(channels) or None)
+        click.echo(f"{product.name}: {len(result.drafts)}개 초안 생성")
+        for channel, reason in result.failures.items():
+            all_failures.append(f"{product.name} [{channel}]: {reason}")
+
+    if all_failures:
+        click.echo("\n생성 실패한 채널:")
+        for line in all_failures:
+            click.echo(f"  - {line}")
 
 
 @cli.command("generate-comparison")

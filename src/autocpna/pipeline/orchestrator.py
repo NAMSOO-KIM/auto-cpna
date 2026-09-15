@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from dataclasses import dataclass
 
+import anthropic
 import httpx
 
 from autocpna.config import get_channels_config
@@ -259,8 +261,23 @@ def _generate_channel_content(product: Product, channel: str, feedback: str = ""
 
 _ACTIVE_DRAFT_STATUSES = (ReviewStatus.PENDING, ReviewStatus.APPROVED, ReviewStatus.PUBLISHED)
 
+# 채널 하나를 생성하다 실패해도 나머지 채널을 살리기 위해 삼키는 예외들.
+# 외부 API/네트워크 실패(httpx), Claude API 실패(anthropic), 그리고 본문이
+# 잘렸을 때 content_gen이 던지는 RuntimeError까지가 "운영 중 정상적으로
+# 일어나는 실패"다. TypeError/KeyError 같은 코드 버그는 일부러 통과시켜
+# 조용히 묻히지 않게 한다.
+GENERATION_FAILURES = (httpx.HTTPError, anthropic.APIError, RuntimeError)
 
-def generate_drafts(product: Product, channels: list[str] | None = None) -> list[ContentDraft]:
+
+@dataclass
+class DraftGenerationResult:
+    drafts: list[ContentDraft]
+    failures: dict[str, str]  # channel -> 실패 사유
+
+
+def generate_drafts(
+    product: Product, channels: list[str] | None = None
+) -> DraftGenerationResult:
     """상품 하나에 대해 채널별 콘텐츠 초안을 생성하고 검수 대기열에 넣는다.
 
     이미 검수 대기/승인/발행 상태인 초안이 있는 (product, channel) 조합은
@@ -268,6 +285,13 @@ def generate_drafts(product: Product, channels: list[str] | None = None) -> list
     조회하므로, 이 스킵이 없으면 같은 상품이 계속 상위권에 남아있는 동안
     반복 실행할 때마다 중복 초안이 쌓인다. 반려된 초안만 있는 경우는
     regenerate_draft가 처리하는 별도 경로이므로 여기서는 새로 생성한다.
+
+    채널별 생성은 서로 격리된다. 예전에는 한 채널이 실패하면(instagram의
+    이미지 생성이 채널 목록 맨 앞이라 특히 자주) 예외가 그대로 올라가서 그
+    상품의 나머지 채널이 통째로 날아갔고, 같은 세션에서 커밋을 마지막에 한 번만
+    했기 때문에 이미 성공해서 과금까지 끝난 Claude 생성 결과도 함께 버려졌다.
+    지금은 채널마다 성공/실패를 따로 모아서, 성공한 초안은 저장하고 실패는
+    사유와 함께 반환한다(호출부가 사람에게 보여줄 수 있도록).
     """
     channels_cfg = get_channels_config()
     channels = channels or [c for c, cfg in channels_cfg.items() if cfg.get("enabled")]
@@ -284,10 +308,21 @@ def generate_drafts(product: Product, channels: list[str] | None = None) -> list
         }
     channels_to_generate = [c for c in channels if c not in already_active]
 
+    # DB 세션을 잡기 전에 생성을 모두 끝낸다 - 채널당 수십 초짜리 외부 API
+    # 호출을 세션 안에서 돌리지 않기 위해서이기도 하다.
+    generated: list[tuple[str, str, str]] = []  # (channel, text, image_path)
+    failures: dict[str, str] = {}
+    for channel in channels_to_generate:
+        try:
+            text, image_path = _generate_channel_content(product, channel)
+        except GENERATION_FAILURES as exc:
+            failures[channel] = f"{type(exc).__name__}: {exc}"
+            continue
+        generated.append((channel, text, image_path))
+
     drafts: list[ContentDraft] = []
     with get_session() as session:
-        for channel in channels_to_generate:
-            text, image_path = _generate_channel_content(product, channel)
+        for channel, text, image_path in generated:
             draft = ContentDraft(
                 product_id=product.id,
                 channel=channel,
@@ -300,7 +335,7 @@ def generate_drafts(product: Product, channels: list[str] | None = None) -> list
         session.commit()
         for d in drafts:
             session.refresh(d)
-    return drafts
+    return DraftGenerationResult(drafts=drafts, failures=failures)
 
 
 def regenerate_draft(draft_id: int) -> ContentDraft:
