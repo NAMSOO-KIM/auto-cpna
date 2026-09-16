@@ -34,7 +34,7 @@ except Exception:
     pass
 
 from autocpna.db import get_session, init_db  # noqa: E402
-from autocpna.models.content_draft import ReviewStatus  # noqa: E402
+from autocpna.models.content_draft import ContentDraft, ReviewStatus  # noqa: E402
 from autocpna.models.product import Product  # noqa: E402
 from autocpna.models.publish_log import PublishLog  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
@@ -130,6 +130,40 @@ else:
 
 for _message, _icon in st.session_state.pop(_FLASH_KEY, []):
     st.toast(_message, icon=_icon)
+
+with st.expander("🩺 시스템 상태 (문제 생기면 이 내용을 그대로 복사해 공유)", expanded=False):
+    # 배포 환경은 원격에서 들여다볼 수 없으므로, 사람이 통째로 복사해 전달할 수
+    # 있는 진단 블록을 만든다. 값 자체는 절대 넣지 않고 설정 여부(True/False)만
+    # 노출해서 그대로 공유해도 키가 새지 않게 한다.
+    _settings = get_settings()
+    _secret_fields = {
+        "ANTHROPIC_API_KEY": _settings.anthropic_api_key,
+        "COUPANG_PARTNERS_ACCESS_KEY": _settings.coupang_partners_access_key,
+        "NAVER_DATALAB_CLIENT_ID": _settings.naver_datalab_client_id,
+        "META_PAGE_ACCESS_TOKEN": _settings.meta_page_access_token,
+        "META_IG_BUSINESS_ID": _settings.meta_ig_business_id,
+        "META_THREADS_ACCESS_TOKEN": _settings.meta_threads_access_token,
+        "IMAGE_GEN_API_KEY": _settings.image_gen_api_key,
+        "CLOUDINARY_API_KEY": _settings.cloudinary_api_key,
+    }
+    with get_session() as _session:
+        _counts = {
+            "products": _session.query(Product).count(),
+            "drafts": _session.query(ContentDraft).count(),
+            "publish_logs": _session.query(PublishLog).count(),
+        }
+
+    _report = "\n".join(
+        [
+            f"DB            : {_db_label}",
+            f"영구 저장      : {'예' if _db_persistent else '아니오 (재시작 시 초기화)'}",
+            "데이터        : " + ", ".join(f"{k}={v}" for k, v in _counts.items()),
+            "설정된 키     : "
+            + ", ".join(f"{k}={'O' if v else 'X'}" for k, v in _secret_fields.items()),
+        ]
+    )
+    st.code(_report, language="text")
+    st.caption("키의 실제 값은 표시되지 않습니다 (설정 여부 O/X만).")
 
 with st.expander("➕ 새 상품 등록하고 초안 생성", expanded=False):
     st.caption(
