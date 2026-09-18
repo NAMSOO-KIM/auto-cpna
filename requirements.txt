@@ -2,7 +2,9 @@
 # pyproject.toml은 setuptools(PEP 621) 형식이라 Streamlit Cloud의 의존성
 # 자동 인식이 보장되지 않으므로, 배포용으로 런타임 의존성을 명시해 둔다.
 # 저장소 자체는 설치되지 않지만 dashboard/app.py가 src를 경로에 추가한다.
-streamlit>=1.35.0
+# width="stretch"(버튼/다운로드 버튼)는 1.50.0부터 지원한다. 그 아래 버전이
+# 설치되면 초안 카드의 버튼마다 TypeError가 난다.
+streamlit>=1.50.0
 anthropic>=0.40.0
 httpx>=0.27.0
 pydantic>=2.7.0

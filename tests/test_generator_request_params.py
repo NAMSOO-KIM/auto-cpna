@@ -50,12 +50,17 @@ def test_blog_comparison_goes_through_shared_complete(monkeypatch):
 
 
 def test_blog_prompt_length_request_fits_in_max_tokens(monkeypatch):
-    """프롬프트가 요구하는 분량이 상한 안에 들어오는지 - 한국어는 글자수보다
-    토큰수가 많으므로(대략 1~1.5배) 넉넉한 여유를 확인한다."""
+    """프롬프트가 요구하는 분량이 상한 안에 들어오는지.
+
+    한국어는 글자수보다 토큰수가 많고(대략 1~1.5배), 적응형 사고가 켜진 모델은
+    사고 토큰도 같은 max_tokens에서 쓴다. 그래서 본문 토큰 추정치만이 아니라
+    사고 몫까지 감안한 배수로 여유를 확인한다.
+    """
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     generator = BlogGenerator()
 
     requested_chars = 2200  # 비교글 프롬프트의 상한
-    assert MAX_TOKENS > requested_chars * 1.5
+    body_tokens = requested_chars * 1.5
+    assert MAX_TOKENS > body_tokens * 4  # 본문 외에 사고 몫까지
 
     assert "2200자" in generator.build_comparison_prompt("무선 이어폰", [PRODUCT])

@@ -19,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "streamlit>=1.35.0",
+    "streamlit>=1.50.0",  # width="stretch" 지원 최소 버전
     "ruff>=0.15.0",
 ]
 

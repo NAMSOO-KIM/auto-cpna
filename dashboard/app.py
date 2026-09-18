@@ -38,7 +38,7 @@ from autocpna.models.content_draft import ContentDraft, ReviewStatus  # noqa: E4
 from autocpna.models.product import Product  # noqa: E402
 from autocpna.models.publish_log import PublishLog  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
-from sqlalchemy.exc import OperationalError  # noqa: E402
+from sqlalchemy.exc import ArgumentError, NoSuchModuleError, OperationalError  # noqa: E402
 
 from autocpna.config import get_channels_config, get_settings  # noqa: E402
 from autocpna.pipeline.orchestrator import (  # noqa: E402
@@ -53,7 +53,7 @@ st.set_page_config(page_title="auto-cpna 검수", layout="wide")
 
 try:
     init_db()
-except (OperationalError, ModuleNotFoundError) as exc:
+except (OperationalError, ModuleNotFoundError, NoSuchModuleError, ArgumentError) as exc:
     # DATABASE_URL을 새로 붙이는 시점에 가장 흔하게 터지는 지점인데, 배포
     # 환경에서는 트레이스백을 숨기도록 해놔서(.streamlit/config.toml) 그대로
     # 두면 화면에 예외 종류만 뜨고 원인을 알 수 없다. 흔한 원인을 같이 안내한다.
@@ -65,6 +65,7 @@ except (OperationalError, ModuleNotFoundError) as exc:
         "→ IPv6 전용이라 실패합니다. Session pooler 주소(pooler.supabase.com:5432)를 쓰세요.\n"
         "- 비밀번호의 특수문자(@ : / # 등)를 URL 인코딩하지 않음 "
         "→ @는 %40, #은 %23 으로 바꿔야 합니다.\n"
+        "- 주소가 `postgres://`로 시작 → `postgresql://`로 바꿔야 합니다.\n"
         "- 비밀번호에 `[YOUR-PASSWORD]` 자리표시자가 그대로 남아 있음\n"
         "- Postgres 드라이버 미설치 → `pip install -r requirements.txt`\n\n"
         f"드라이버 메시지: {type(exc).__name__}"
@@ -199,6 +200,11 @@ with st.expander("➕ 새 상품 등록하고 초안 생성", expanded=False):
             # 0원으로 두면 생성기가 가격을 못 쓰고 "가격 정보가 없다"고 에두르는
             # 본문이 나온다(추측 금지 규칙). 호출 비용만 쓰고 버리게 되므로 막는다.
             st.error("가격을 입력하세요. 0원이면 가격을 뺀 어정쩡한 본문이 생성됩니다.")
+        elif not channels:
+            # 빈 목록을 generate_drafts에 넘기면 "지정 없음"으로 해석돼 enabled
+            # 채널 전부가 생성된다. 사용자가 일부러 비운 것을 유료 호출 4건으로
+            # 갚아주는 셈이라 명시적으로 막는다.
+            st.error("생성할 채널을 하나 이상 선택하세요.")
         else:
             with st.spinner("상품 등록 후 채널별 초안 생성 중..."):
                 product = register_manual_product(
@@ -210,12 +216,16 @@ with st.expander("➕ 새 상품 등록하고 초안 생성", expanded=False):
                     source=source,
                     keyword=keyword,
                 )
-                result = generate_drafts(product, channels=channels or None)
+                result = generate_drafts(product, channels=list(channels))
+            # 실패가 있어도 반드시 rerun 한다. 여기서 멈추면 폼 입력이 그대로
+            # 남아 사용자가 다시 제출하기 쉬운데, register_manual_product는
+            # 호출할 때마다 새 uuid external_id를 만들어 같은 상품이 중복
+            # 등록되고 이미 성공한 채널까지 다시 과금된다. 실패 사유는 rerun을
+            # 넘어가는 flash로 전달한다.
             for channel, reason in result.failures.items():
-                st.warning(f"[{channel}] 생성 실패: {reason}")
+                flash(f"[{channel}] 생성 실패: {reason}", icon="⚠️")
             flash(f"상품 #{product.id} 등록, 초안 {len(result.drafts)}개 생성됨")
-            if not result.failures:
-                st.rerun()
+            st.rerun()
 
 st.divider()
 
@@ -334,8 +344,14 @@ else:
             if col_done.button(
                 "발행 완료로 표시", key=f"blog_done_{draft.id}", width="stretch", type="primary"
             ):
-                review_queue.mark_published(draft.id)
-                flash(f"#{draft.id} 발행 완료로 기록됨")
+                # 더블클릭이나 다른 검수자가 먼저 처리한 경우 이미 PUBLISHED라
+                # mark_published가 ValueError를 던진다. 결과는 어차피 "이미
+                # 발행됨"이므로 화면을 죽이지 않고 그대로 넘어간다.
+                try:
+                    review_queue.mark_published(draft.id)
+                    flash(f"#{draft.id} 발행 완료로 기록됨")
+                except ValueError:
+                    flash(f"#{draft.id}는 이미 처리된 초안입니다", icon="⚠️")
                 st.rerun()
 
 st.divider()
