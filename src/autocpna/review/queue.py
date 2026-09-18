@@ -6,6 +6,7 @@ import datetime as dt
 from autocpna.config import get_channels_config
 from autocpna.db import get_session
 from autocpna.models.content_draft import ContentDraft, ReviewStatus
+from autocpna.models.publish_log import PublishLog
 
 
 def should_auto_publish(channel: str) -> bool:
@@ -42,6 +43,48 @@ def list_rejected() -> list[ContentDraft]:
             .filter(ContentDraft.status == ReviewStatus.REJECTED)
             .all()
         )
+
+
+def list_approved(channel: str | None = None) -> list[ContentDraft]:
+    """승인됐지만 아직 발행되지 않은 초안. channel을 주면 그 채널만.
+
+    네이버 블로그처럼 자동 발행이 불가능한 채널은 승인 후 계속 APPROVED로
+    남으므로, 사람이 직접 올려야 할 목록을 뽑는 용도로 쓴다.
+    """
+    with get_session() as session:
+        query = session.query(ContentDraft).filter(
+            ContentDraft.status == ReviewStatus.APPROVED
+        )
+        if channel is not None:
+            query = query.filter(ContentDraft.channel == channel)
+        return query.all()
+
+
+def mark_published(draft_id: int) -> ContentDraft:
+    """사람이 채널에 직접 올린 초안을 발행 완료로 넘긴다.
+
+    자동 발행이 없는 채널(네이버 블로그)은 이 경로가 없으면 승인 상태로 영원히
+    쌓이기만 한다. 자동 발행과 동일하게 PublishLog에도 기록을 남겨서 발행
+    이력이 한 곳에서 보이도록 한다.
+    """
+    with get_session() as session:
+        draft = session.get(ContentDraft, draft_id)
+        if draft is None:
+            raise ValueError(f"draft {draft_id} not found")
+        if draft.status != ReviewStatus.APPROVED:
+            raise ValueError(f"draft {draft_id} is not approved (status={draft.status})")
+        draft.status = ReviewStatus.PUBLISHED
+        session.add(
+            PublishLog(
+                draft_id=draft.id,
+                channel=draft.channel,
+                success=True,
+                remote_post_id="manual",
+            )
+        )
+        session.commit()
+        session.refresh(draft)
+        return draft
 
 
 def update_content(

@@ -24,7 +24,9 @@ class NaverBlogPublisher(Publisher):
         return PublishResult(
             success=False,
             error_message=(
-                f"네이버 블로그는 자동 발행을 지원하지 않습니다. "
-                f"초안이 {out_path} 에 저장되었으니 수동으로 게시하세요."
+                "네이버 블로그는 자동 발행을 지원하지 않습니다. 검수 대시보드의 "
+                "'네이버 블로그 수동 발행 대기'에서 본문을 받아 직접 게시한 뒤 "
+                "'발행 완료로 표시'를 누르세요. "
+                f"(로컬 실행 시에는 {out_path} 에도 저장됨)"
             ),
         )

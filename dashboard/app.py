@@ -296,6 +296,49 @@ for draft in pending:
             st.rerun()
 
 st.divider()
+st.subheader("네이버 블로그 수동 발행 대기")
+st.caption(
+    "네이버는 공식 자동 포스팅 API가 없어 승인해도 자동 발행되지 않는다. "
+    "본문을 받아 블로그에 직접 올린 뒤 '발행 완료로 표시'를 눌러야 목록에서 내려간다."
+)
+
+blog_ready = review_queue.list_approved(channel="naver_blog")
+if not blog_ready:
+    st.caption("직접 올릴 블로그 초안이 없습니다.")
+else:
+    blog_products = _load_products(blog_ready)
+    for draft in blog_ready:
+        product = blog_products.get(draft.product_id)
+        with st.container(border=True):
+            st.write(f"#{draft.id} · naver_blog")
+            if product:
+                st.caption(_product_caption(product))
+            # 발행기는 서버 컨테이너 안에 txt 파일을 떨궈두는데, 배포 환경에서는
+            # 그 파일에 접근할 방법이 없다. 본문을 화면에서 복사하거나 내려받을 수
+            # 있게 여기서 직접 제공한다.
+            st.text_area(
+                "본문 (복사해서 블로그에 붙여넣기)",
+                draft.caption_or_body,
+                height=260,
+                key=f"blog_body_{draft.id}",
+            )
+            col_dl, col_done = st.columns(2)
+            col_dl.download_button(
+                "본문 내려받기 (.md)",
+                data=draft.caption_or_body,
+                file_name=f"naver_blog_draft_{draft.id}.md",
+                mime="text/markdown",
+                key=f"blog_dl_{draft.id}",
+                width="stretch",
+            )
+            if col_done.button(
+                "발행 완료로 표시", key=f"blog_done_{draft.id}", width="stretch", type="primary"
+            ):
+                review_queue.mark_published(draft.id)
+                flash(f"#{draft.id} 발행 완료로 기록됨")
+                st.rerun()
+
+st.divider()
 st.subheader("반려된 초안 (재생성 가능)")
 
 rejected = review_queue.list_rejected()
