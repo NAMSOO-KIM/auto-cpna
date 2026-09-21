@@ -38,3 +38,8 @@ where = ["src"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+
+[tool.ruff.lint]
+# Ruff 0.16 changed the defaults. Preserve the project's original checks without
+# rewriting the separate autocpna product: https://astral.sh/blog/ruff-v0.16.0
+select = ["E4", "E7", "E9", "F"]
