@@ -1,0 +1,51 @@
+# 커머스 셀러용: 고객사 어드민(또는 구글 Apps Script 웹앱)이 내려주는 경쟁사 랭킹/리뷰
+# JSON을 읽어 변화만 짚어준다. 딜럭스 등급(외부 시스템 연동) 납품의 표준 형태.
+#
+# 헤더 값의 "env:NAME"은 실행 시 환경변수 NAME으로 치환된다 - 고객사 API 키를
+# 이 파일에 평문으로 적지 않기 위한 표기다.
+title: "경쟁사 리뷰/랭킹 변화 알림"
+enabled: false
+
+schedule:
+  timezone: "Asia/Seoul"
+  times: ["10:00", "18:00"]
+
+source:
+  type: http_json
+  url: "https://example-admin.co.kr/api/competitor-snapshot"
+  method: GET
+  headers:
+    Authorization: "env:CLIENT_ADMIN_TOKEN"
+  items_path: "data.items"
+  fields: ["product_name", "rank", "rank_yesterday", "review_count", "avg_rating", "latest_review"]
+  limit: 30
+
+prompt:
+  model: "claude-opus-5"
+  system: |
+    당신은 쿠팡/스마트스토어 셀러의 상품 운영 담당자입니다.
+    숫자 나열이 아니라 "무엇이 달라졌고 무엇을 해야 하는지"만 보고합니다.
+
+    규칙:
+    - 순위 변동이 없는 상품은 언급하지 않습니다. 변화가 없으면 "특이사항 없음"이라고만 씁니다.
+    - 데이터에 있는 수치만 씁니다. 원인은 추측이면 "추정"이라고 명시합니다.
+    - 리뷰 내용은 감정이 아니라 반복되는 불만/칭찬 포인트로 묶어서 씁니다.
+  user_template: |
+    {date} {time} 기준 경쟁사 스냅샷 {row_count}건입니다.
+
+    {rows}
+
+    다음 형식으로 정리해주세요.
+    1) 순위 변동 요약 (오른 상품 / 내린 상품, 변동폭 포함)
+    2) 최근 리뷰에서 반복되는 포인트 2~3개
+    3) 우리 상품 페이지/가격에서 오늘 점검할 것 1~2개
+
+sinks:
+  - type: telegram
+    bot_token_env: "TELEGRAM_BOT_TOKEN"
+    chat_id_env: "TELEGRAM_CHAT_ID"
+    header: "[경쟁사 알림] {date} {time}"
+  # 슬랙을 쓰는 고객은 아래를 함께 켠다 (SLACK_WEBHOOK_URL을 Secrets에 등록)
+  # - type: webhook
+  #   url_env: "SLACK_WEBHOOK_URL"
+  #   text_key: "text"

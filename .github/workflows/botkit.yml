@@ -1,0 +1,91 @@
+# 고객사 업무 자동화 봇 스케줄러.
+#
+# cron은 UTC 고정이고 실행이 수 분~십수 분 밀리기도 해서, 여기서는 "매시 정각에
+# 깨우기"만 하고 어떤 잡을 보낼지는 config/jobs/*.yaml의 고객사 타임존 기준으로
+# botkit이 판단한다(--due-now). 상태 파일을 캐시로 주고받아 한 시간 안에 두 번
+# 깨어나도 같은 회차를 중복 발송하지 않는다.
+name: botkit
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "즉시 실행할 잡 이름 (config/jobs/<이름>.yaml). 비우면 지금 예정된 잡만 실행"
+        required: false
+        default: ""
+      dry_run:
+        description: "발송하지 않고 생성 결과만 로그로 확인"
+        type: boolean
+        required: false
+        default: false
+
+# 앞 실행이 남아 있는 상태로 다음 정각이 오면 상태 파일이 엇갈릴 수 있어 직렬화한다.
+concurrency:
+  group: botkit-scheduler
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      # 고객사별 추가 시크릿(슬랙 웹훅, 어드민 토큰 등)은 아래에 이어서 선언한다.
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      CLIENT_ADMIN_TOKEN: ${{ secrets.CLIENT_ADMIN_TOKEN }}
+      STATE_FILE: .botkit/state.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Restore last-run state
+        uses: actions/cache/restore@v4
+        with:
+          path: .botkit
+          key: botkit-state-${{ github.run_id }}
+          restore-keys: botkit-state-
+
+      - name: Run due jobs
+        if: inputs.job == ''
+        run: |
+          botkit run --due-now --tick-minutes 60 --state-file "$STATE_FILE" \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Run one job
+        if: inputs.job != ''
+        run: |
+          botkit run --job "${{ inputs.job }}" ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Save last-run state
+        # 실패한 실행에서도 성공한 잡의 기록은 남겨야 중복 발송을 막을 수 있다.
+        if: always() && inputs.job == '' && !inputs.dry_run
+        uses: actions/cache/save@v4
+        with:
+          path: .botkit
+          key: botkit-state-${{ github.run_id }}
+
+      - name: Notify operator on failure
+        if: failure()
+        env:
+          OPS_CHAT_ID: ${{ secrets.OPS_TELEGRAM_CHAT_ID }}
+        # 고객이 "오늘 보고 안 왔는데요?"라고 먼저 알려주는 상황을 막는 장치.
+        # 운영자 전용 채팅방(OPS_TELEGRAM_CHAT_ID)으로만 보낸다.
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$OPS_CHAT_ID" ]; then
+            echo "운영자 알림 시크릿이 없어 건너뜁니다."
+            exit 0
+          fi
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg chat "$OPS_CHAT_ID" \
+                   --arg text "botkit 실행 실패: ${GITHUB_REPOSITORY} / 로그: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+                   '{chat_id: $chat, text: $text}')" > /dev/null
