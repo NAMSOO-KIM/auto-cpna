@@ -1,0 +1,92 @@
+"""텔레그램 발송. 고객이 실제로 보는 결과물이 나가는 지점."""
+from __future__ import annotations
+
+import time
+
+import httpx
+
+from botkit.jobspec import TelegramSink
+from botkit.settings import require_env
+
+API_URL = "https://api.telegram.org/bot{token}/sendMessage"
+TIMEOUT = 30.0
+# 텔레그램 한 메시지 상한은 4096자다. 이모지/한글은 UTF-16 코드유닛으로 계산되는
+# 데다 서식 태그도 길이에 포함돼, 상한에 붙여서 자르면 간헐적으로 반송된다.
+CHUNK_LIMIT = 3500
+
+
+def split_message(text: str, limit: int = CHUNK_LIMIT) -> list[str]:
+    """길이 상한에 맞춰 나눈다. 문단 -> 줄 -> 강제 절단 순으로 경계를 찾는다."""
+    text = text.strip()
+    if not text:
+        return []
+
+    chunks: list[str] = []
+    remaining = text
+    while len(remaining) > limit:
+        window = remaining[:limit]
+        cut = window.rfind("\n\n")
+        if cut < limit // 2:
+            cut = window.rfind("\n")
+        if cut < limit // 2:
+            cut = limit
+        chunks.append(remaining[:cut].rstrip())
+        remaining = remaining[cut:].lstrip()
+    chunks.append(remaining)
+    return [chunk for chunk in chunks if chunk]
+
+
+def _error_detail(response: httpx.Response) -> str:
+    try:
+        return response.json().get("description", response.text)
+    except ValueError:
+        return response.text
+
+
+def _post(client: httpx.Client, url: str, payload: dict) -> httpx.Response:
+    """429(rate limit)만 한 번 재시도한다. 여러 청크를 연속 발송할 때 걸린다."""
+    response = client.post(url, json=payload)
+    if response.status_code == 429:
+        try:
+            retry_after = int(response.json()["parameters"]["retry_after"])
+        except (ValueError, KeyError, TypeError):
+            retry_after = 3
+        time.sleep(min(retry_after, 30))
+        response = client.post(url, json=payload)
+    return response
+
+
+def send(sink: TelegramSink, text: str, header: str = "") -> list[int]:
+    """메시지를 보내고 message_id 목록을 반환."""
+    token = require_env(sink.bot_token_env, "텔레그램 봇 토큰 (@BotFather 발급)")
+    chat_id = require_env(sink.chat_id_env, "텔레그램 채팅 ID (@userinfobot 또는 그룹 ID)")
+    url = API_URL.format(token=token)
+
+    body = f"{header}\n\n{text}" if header else text
+    message_ids: list[int] = []
+    with httpx.Client(timeout=TIMEOUT) as client:
+        for chunk in split_message(body):
+            payload: dict = {
+                "chat_id": chat_id,
+                "text": chunk,
+                "disable_web_page_preview": sink.disable_web_page_preview,
+            }
+            if sink.parse_mode != "none":
+                payload["parse_mode"] = sink.parse_mode
+
+            response = _post(client, url, payload)
+
+            if response.status_code == 400 and "parse_mode" in payload:
+                # LLM 본문의 *, _, [ 가 마크다운 파서에 걸려 반송된 경우.
+                # 서식을 포기하고 평문으로 다시 보낸다 - 서식 때문에 보고가
+                # 아예 안 가는 것보다 낫다.
+                payload.pop("parse_mode")
+                response = _post(client, url, payload)
+
+            if response.status_code != 200:
+                raise RuntimeError(
+                    f"텔레그램 발송 실패 (status={response.status_code}): {_error_detail(response)}. "
+                    f"봇을 해당 채팅에 초대했는지, {sink.chat_id_env} 값이 맞는지 확인하세요."
+                )
+            message_ids.append(response.json().get("result", {}).get("message_id", 0))
+    return message_ids
