@@ -277,7 +277,8 @@ Codex는 아래 파일을 **먼저 전부 읽고** 구조를 파악한 뒤 작�
 - [ ] `pytest -q` 전체 통과 (기존 165개 + 신규)
 - [ ] 신규 기능마다 테스트 추가. "왜 이 케이스인가"를 docstring에 남긴다
 - [ ] `src/botkit`이 `autocpna`를 import 하지 않음:
-      `grep -r "autocpna" src/botkit/` 결과가 비어 있어야 함
+      `grep -rE "^\s*(import|from)\s+autocpna" src/botkit/` 결과가 비어 있어야 함
+      (주석·docstring의 언급은 정상이므로 `grep autocpna`만으로는 판정 불가)
 - [ ] 의존성 5개 제한 유지: `grep -rE "^import |^from " src/botkit/` 검토
 
 ### 기능 (실제 자격증명으로 1회씩)
