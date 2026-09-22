@@ -12,5 +12,3 @@ dist/
 build/
 .DS_Store
 
-# botkit 로컬 실행 시 생기는 중복 발송 방지 상태 파일
-.botkit/
