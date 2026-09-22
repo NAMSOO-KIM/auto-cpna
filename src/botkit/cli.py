@@ -13,6 +13,8 @@ from botkit.schedule import DEFAULT_TICK_MINUTES, describe, due_at
 from botkit.settings import load_env_file
 from botkit.sinks import telegram
 from botkit.runner import run_due, run_job
+from botkit.history import HistoryError, read_month, summarize
+from botkit.pricing import PricingError, load_price
 
 jobs_dir_option = click.option(
     "--jobs-dir",
@@ -69,15 +71,23 @@ def validate(jobs_dir: Path | None) -> None:
         sys.exit(1)
 
     missing_total = 0
+    pricing_errors = 0
     for job in jobs:
         missing = [name for name in _required_env_names(job) if not os.environ.get(name, "").strip()]
         missing_total += len(missing)
         status = "OK" if not missing else f"환경변수 누락: {', '.join(missing)}"
         click.echo(f"{job.name}: 스키마 OK / {status}")
+        if job.history.enabled:
+            try:
+                load_price(job.history.pricing_file, job.prompt.model)
+            except PricingError as exc:
+                pricing_errors += 1
+                click.echo(f"{job.name}: {exc}")
 
     click.echo(f"\n잡 {len(jobs)}개 검증 완료.")
     if missing_total:
         click.echo("환경변수가 비어 있으면 실행 시점에 실패합니다 (.env 또는 Actions Secrets 확인).")
+    if missing_total or pricing_errors:
         sys.exit(1)
 
 
@@ -130,6 +140,8 @@ def run(
         click.echo(f"{result.job_name}: {result.status} (수집 {result.row_count}건) {result.reason}".rstrip())
         for line in result.deliveries:
             click.echo(f"  - {line}")
+        if result.history_id:
+            click.echo(f"  - history_id={result.history_id}")
         if dry_run and result.output:
             click.echo("--- 생성 결과 ---")
             click.echo(result.output)
@@ -170,6 +182,29 @@ def due(tick_minutes: int, jobs_dir: Path | None) -> None:
         fire_at = due_at(job.schedule, now, tick_minutes) if job.enabled else None
         mark = f"실행 대상 ({fire_at:%Y-%m-%d %H:%M} 분)" if fire_at else "대기"
         click.echo(f"{job.name}: {mark}")
+
+
+@cli.command()
+@click.option("--month", required=True, help="조회할 UTC 회차 월 (YYYY-MM)")
+@click.option("--history-dir", type=click.Path(path_type=Path), default=Path(".botkit/history"))
+def report(month: str, history_dir: Path) -> None:
+    """잡별 실행 상태, 토큰 사용량과 추정 원가 (dry-run/실패 비용 포함)."""
+    try:
+        records = read_month(history_dir, month)
+    except HistoryError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if not records:
+        click.echo("이력이 없습니다. 0원 사용을 뜻하지 않습니다. 경로와 백업 복원을 확인하세요.")
+        return
+    click.echo("job\truns\tok\tskipped\tfailed\tdry-run\tinput_tokens\toutput_tokens\tUSD\tunknown")
+    for name, item in sorted(summarize(records).items()):
+        click.echo(
+            f"{name}\t{item.runs}\t{item.statuses['ok']}\t{item.statuses['skipped']}\t"
+            f"{item.statuses['failed']}\t{item.statuses['dry-run']}\t{item.input_tokens}\t"
+            f"{item.output_tokens}\t{item.estimated_cost_usd:.8f}\t{item.unknown_cost_runs}"
+        )
+    click.echo("USD는 기록된 단가의 추정 합계입니다. unknown은 비용 미확인 건수(합계 제외)입니다.")
+    click.echo("입력/출력 본문은 저장하지 않습니다. API 청구서와 별도로 대조하세요.")
 
 
 if __name__ == "__main__":

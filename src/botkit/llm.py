@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
 import anthropic
@@ -11,6 +12,26 @@ from botkit.jobspec import JobSpec
 from botkit.settings import require_env
 
 PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
+
+
+@dataclass(frozen=True)
+class GenerationResult:
+    text: str
+    input_tokens: int | None
+    output_tokens: int | None
+
+
+class GenerationError(RuntimeError):
+    """응답을 발송하지 못해도 이미 사용한 토큰을 이력에 남긴다."""
+
+    def __init__(self, message: str, result: GenerationResult):
+        super().__init__(message)
+        self.result = result
+
+
+def _token_count(usage, key: str) -> int | None:
+    value = getattr(usage, key, None)
+    return value if type(value) is int and value >= 0 else None
 
 
 def render(template: str, values: dict[str, str]) -> str:
@@ -68,7 +89,10 @@ def extract_text(message) -> str:
     texts = [block.text for block in message.content if block.type == "text"]
     if not texts:
         raise RuntimeError(f"응답에 text 블록이 없습니다 (stop_reason={message.stop_reason})")
-    return "".join(texts)
+    text = "".join(texts)
+    if not text.strip():
+        raise RuntimeError("응답 본문이 비어 있습니다. 빈 보고는 발송하지 않습니다.")
+    return text
 
 
 def build_prompt(job: JobSpec, rows: list[dict], now: dt.datetime) -> str:
@@ -85,10 +109,11 @@ def build_prompt(job: JobSpec, rows: list[dict], now: dt.datetime) -> str:
     )
 
 
-def generate(job: JobSpec, rows: list[dict], now: dt.datetime, client=None) -> str:
+def generate(job: JobSpec, rows: list[dict], now: dt.datetime, client=None) -> GenerationResult:
     """잡 프롬프트로 보고서 본문 생성. client는 테스트에서 주입한다."""
     api_key = require_env("ANTHROPIC_API_KEY", "Claude 콘텐츠 생성")
-    client = client or anthropic.Anthropic(api_key=api_key)
+    owned = client is None
+    client = client if client is not None else anthropic.Anthropic(api_key=api_key)
 
     params: dict = {
         "model": job.prompt.model,
@@ -99,4 +124,23 @@ def generate(job: JobSpec, rows: list[dict], now: dt.datetime, client=None) -> s
     if job.prompt.effort:
         params["output_config"] = {"effort": job.prompt.effort}
 
-    return extract_text(client.messages.create(**params))
+    try:
+        response = client.messages.create(**params)
+    finally:
+        if owned:
+            client.close()
+    usage = getattr(response, "usage", None)
+    result = GenerationResult(
+        "", _token_count(usage, "input_tokens"), _token_count(usage, "output_tokens")
+    )
+    try:
+        text = extract_text(response)
+    except RuntimeError as exc:
+        raise GenerationError(str(exc), result) from exc
+    if result.input_tokens is None or result.output_tokens is None:
+        raise GenerationError("Claude usage가 없거나 잘못되었습니다. 비용을 확인하세요.", result)
+    # 현재 요청은 캐시/도구를 쓰지 않는다. 알 수 없는 별도 과금을 0원으로 숨기지 않는다.
+    if any(getattr(usage, key, 0) for key in ("cache_creation_input_tokens", "cache_read_input_tokens")):
+        raise GenerationError("캐시 사용량은 현재 단가 계산 범위 밖입니다.",
+                              GenerationResult("", None, None))
+    return GenerationResult(text, result.input_tokens, result.output_tokens)

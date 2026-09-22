@@ -20,7 +20,8 @@ BASE = {
 def message(text, stop_reason="end_turn", stop_details=None):
     block = types.SimpleNamespace(type="text", text=text)
     return types.SimpleNamespace(
-        content=[block], stop_reason=stop_reason, stop_details=stop_details
+        content=[block], stop_reason=stop_reason, stop_details=stop_details,
+        usage=types.SimpleNamespace(input_tokens=100, output_tokens=20),
     )
 
 
@@ -64,7 +65,10 @@ def test_generate_passes_model_and_system(monkeypatch):
     job = parse_job("t", BASE)
     client = FakeClient(message("보고서 본문"))
 
-    assert llm.generate(job, [{"a": 1}], NOW, client=client) == "보고서 본문"
+    # P0-1은 문자열 대신 본문과 usage를 함께 반환한다. 기존 본문 검증도 유지한다.
+    result = llm.generate(job, [{"a": 1}], NOW, client=client)
+    assert result.text == "보고서 본문"
+    assert (result.input_tokens, result.output_tokens) == (100, 20)
     assert client.params["model"] == "claude-opus-5"
     assert client.params["system"] == "시스템"
     # effort를 지정하지 않으면 API 기본값을 쓰도록 아예 보내지 않는다.

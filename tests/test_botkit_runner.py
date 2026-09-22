@@ -1,9 +1,11 @@
 import datetime as dt
+from pathlib import Path
 
 import pytest
 
 from botkit import runner, state
 from botkit.jobspec import parse_job
+from botkit.sinks import DeliveryResult
 
 NOW = dt.datetime(2026, 9, 21, 23, 5, tzinfo=dt.timezone.utc)  # KST 09-22 08:05
 
@@ -16,13 +18,22 @@ JOB = {
 }
 
 
+@pytest.fixture(autouse=True)
+def isolated_ledger(tmp_path, monkeypatch):
+    """기존 실행 테스트도 새 이력을 남기되 실제 운영 장부는 오염시키지 않는다."""
+    pricing = Path(__file__).resolve().parents[1] / "config" / "pricing.yaml"
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "pricing.yaml").write_text(pricing.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def fake_llm(monkeypatch):
     calls = []
 
     def generate(job, rows, now, client=None):
         calls.append((job.name, len(rows)))
-        return f"{job.name} 보고서"
+        return runner.llm.GenerationResult(f"{job.name} 보고서", 100, 20)
 
     monkeypatch.setattr(runner.llm, "generate", generate)
     return calls
@@ -34,7 +45,7 @@ def sent(monkeypatch):
 
     def deliver(job, text, now):
         delivered.append((job.name, text))
-        return ["telegram: 1개 메시지 발송"]
+        return DeliveryResult(["telegram: 1개 메시지 발송"], [7])
 
     monkeypatch.setattr(runner, "deliver", deliver)
     return delivered
@@ -85,7 +96,7 @@ def test_one_failing_job_does_not_stop_the_others(monkeypatch, sent):
     def generate(job, rows, now, client=None):
         if job.name == "broken":
             raise RuntimeError("시트 공유 설정이 풀렸습니다")
-        return "보고서"
+        return runner.llm.GenerationResult("보고서", 100, 20)
 
     monkeypatch.setattr(runner.llm, "generate", generate)
     jobs = [parse_job("broken", JOB), parse_job("healthy", JOB)]
@@ -115,7 +126,7 @@ def test_failed_job_is_retried_on_next_tick(tmp_path, monkeypatch, sent):
         attempts.append(now)
         if len(attempts) == 1:
             raise RuntimeError("일시적 네트워크 오류")
-        return "보고서"
+        return runner.llm.GenerationResult("보고서", 100, 20)
 
     monkeypatch.setattr(runner.llm, "generate", generate)
     path = tmp_path / "state.json"

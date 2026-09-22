@@ -10,6 +10,12 @@
 title: "고객사명 - 업무 요약 봇"
 enabled: true
 
+# 선택: 기본값으로도 이력/비용이 기록된다. 고객별 Python 수정은 필요 없다.
+history:
+  enabled: true
+  directory: ".botkit/history"          # Actions에서는 .botkit/ 내부만 사용
+  pricing_file: "config/pricing.yaml"   # 플랫폼 공통 단가표
+
 schedule:
   timezone: "Asia/Seoul"
   times: ["08:00"]

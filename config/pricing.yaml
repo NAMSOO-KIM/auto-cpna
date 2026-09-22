@@ -1,0 +1,14 @@
+# USD / 1,000,000 tokens. Standard direct Messages API, no caching/tools/batch.
+# 모델 변경 시 플랫폼 공통 단가표에 먼저 추가한다 (고객별 Python 수정 불필요).
+source: https://platform.claude.com/docs/en/about-claude/pricing
+checked_on: "2026-09-22"
+models:
+  claude-opus-5:
+    input_usd_per_million: 5
+    output_usd_per_million: 25
+  claude-sonnet-5:
+    input_usd_per_million: 2
+    output_usd_per_million: 10
+  claude-haiku-4-5:
+    input_usd_per_million: 1
+    output_usd_per_million: 5

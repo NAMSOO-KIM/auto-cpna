@@ -37,6 +37,8 @@ jobs:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       CLIENT_ADMIN_TOKEN: ${{ secrets.CLIENT_ADMIN_TOKEN }}
       STATE_FILE: .botkit/state.json
+      # 쉘 코드에 사용자 입력을 직접 보간하지 않는다.
+      BOTKIT_JOB: ${{ inputs.job }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,7 +53,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .botkit
-          key: botkit-state-${{ github.run_id }}
+          key: botkit-state-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: botkit-state-
 
       - name: Run due jobs
@@ -63,15 +65,25 @@ jobs:
       - name: Run one job
         if: inputs.job != ''
         run: |
-          botkit run --job "${{ inputs.job }}" ${{ inputs.dry_run && '--dry-run' || '' }}
+          botkit run --job "$BOTKIT_JOB" ${{ inputs.dry_run && '--dry-run' || '' }}
 
       - name: Save last-run state
-        # 실패한 실행에서도 성공한 잡의 기록은 남겨야 중복 발송을 막을 수 있다.
-        if: always() && inputs.job == '' && !inputs.dry_run
+        # 실패/수동/dry-run도 API 비용이 생긴다. 상태 변경 여부와 장부 보존은 별개다.
+        if: always()
         uses: actions/cache/save@v4
         with:
           path: .botkit
-          key: botkit-state-${{ github.run_id }}
+          key: botkit-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Back up execution ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botkit-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .botkit/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: Notify operator on failure
         if: failure()

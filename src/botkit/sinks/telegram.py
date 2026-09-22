@@ -15,6 +15,14 @@ TIMEOUT = 30.0
 CHUNK_LIMIT = 3500
 
 
+class TelegramSendError(RuntimeError):
+    """뒤 청크가 실패해도 앞 청크의 발송 증거를 버리지 않는다."""
+
+    def __init__(self, message: str, message_ids: list[int]):
+        super().__init__(message)
+        self.message_ids = list(message_ids)
+
+
 def split_message(text: str, limit: int = CHUNK_LIMIT) -> list[str]:
     """길이 상한에 맞춰 나눈다. 문단 -> 줄 -> 강제 절단 순으로 경계를 찾는다."""
     text = text.strip()
@@ -34,13 +42,6 @@ def split_message(text: str, limit: int = CHUNK_LIMIT) -> list[str]:
         remaining = remaining[cut:].lstrip()
     chunks.append(remaining)
     return [chunk for chunk in chunks if chunk]
-
-
-def _error_detail(response: httpx.Response) -> str:
-    try:
-        return response.json().get("description", response.text)
-    except ValueError:
-        return response.text
 
 
 def _post(client: httpx.Client, url: str, payload: dict) -> httpx.Response:
@@ -74,19 +75,30 @@ def send(sink: TelegramSink, text: str, header: str = "") -> list[int]:
             if sink.parse_mode != "none":
                 payload["parse_mode"] = sink.parse_mode
 
-            response = _post(client, url, payload)
-
-            if response.status_code == 400 and "parse_mode" in payload:
-                # LLM 본문의 *, _, [ 가 마크다운 파서에 걸려 반송된 경우.
-                # 서식을 포기하고 평문으로 다시 보낸다 - 서식 때문에 보고가
-                # 아예 안 가는 것보다 낫다.
-                payload.pop("parse_mode")
+            try:
                 response = _post(client, url, payload)
-
-            if response.status_code != 200:
-                raise RuntimeError(
-                    f"텔레그램 발송 실패 (status={response.status_code}): {_error_detail(response)}. "
-                    f"봇을 해당 채팅에 초대했는지, {sink.chat_id_env} 값이 맞는지 확인하세요."
-                )
-            message_ids.append(response.json().get("result", {}).get("message_id", 0))
+                if response.status_code == 400 and "parse_mode" in payload:
+                    # LLM 본문의 *, _, [ 가 마크다운 파서에 걸려 반송된 경우.
+                    # 서식을 포기하고 평문으로 다시 보낸다 - 서식 때문에 보고가
+                    # 아예 안 가는 것보다 낫다.
+                    payload.pop("parse_mode")
+                    response = _post(client, url, payload)
+                if response.status_code != 200:
+                    raise TelegramSendError(
+                        f"텔레그램 발송 실패 (status={response.status_code}). "
+                        f"봇 초대 여부와 {sink.chat_id_env} 설정을 확인하세요.", message_ids
+                    )
+                data = response.json()
+                message_id = data.get("result", {}).get("message_id")
+                if data.get("ok") is not True or type(message_id) is not int or message_id <= 0:
+                    raise TelegramSendError("텔레그램 응답에 유효한 message_id가 없습니다.", message_ids)
+                message_ids.append(message_id)
+            except TelegramSendError:
+                raise
+            except (httpx.HTTPError, ValueError, TypeError, AttributeError) as exc:
+                # URL에 bot token이 들어 있어 원본 네트워크 예외를 출력하면 안 된다.
+                raise TelegramSendError(
+                    f"텔레그램 통신/응답 오류 ({type(exc).__name__}). "
+                    "발송 여부를 확인한 후 재시도하세요.", message_ids
+                ) from exc
     return message_ids

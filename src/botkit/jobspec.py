@@ -159,6 +159,21 @@ class PromptSpec(Strict):
         return template
 
 
+class HistorySpec(Strict):
+    """납품마다 코드를 열지 않고 이력 보관 위치와 단가표를 선택한다."""
+
+    enabled: bool = True
+    directory: str = Field(default=".botkit/history", min_length=1)
+    pricing_file: str = Field(default="config/pricing.yaml", min_length=1)
+
+    @field_validator("directory", "pricing_file")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("이력 경로는 비어 있을 수 없습니다.")
+        return value
+
+
 class JobSpec(Strict):
     name: str = ""
     title: str
@@ -171,6 +186,7 @@ class JobSpec(Strict):
     # API 비용을 쓰지 않는다. 매일 결과가 와야 안심하는 고객은 false로 바꾼다.
     skip_when_empty: bool = True
     max_input_chars: int = 40000
+    history: HistorySpec = Field(default_factory=HistorySpec)
 
 
 class JobConfigError(RuntimeError):
