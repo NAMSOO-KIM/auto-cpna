@@ -143,11 +143,36 @@ ruff check . && pytest -q        # 둘 다 통과하는 상태에서 시작해�
 - 리뷰어가 봐야 할 판단 지점:
 ```
 
-### 최근 작업 보고 — P0-1 (`d3302ef`, 리뷰 수정 `873804a`)
+### 최근 작업 보고 — P0-2 (`7d7153f`)
 
-- 한 일: 월별 JSONL 실행 장부, 단가 스냅샷, 토큰·추정 원가 기록, `botkit report`
-- 새 YAML 옵션: `history.{enabled,directory,pricing_file}`, 공통 `config/pricing.yaml`
-- 새 환경변수: `BOTKIT_JOB` (양쪽 등록 완료)
-- 검증: ruff 통과 / pytest 215개 통과 (신규 50개)
-- 사람 승인 대기: 실제 유료 API 호출과 고객 채널 발송을 통한 실환경 검증
-- 리뷰 결과: 4장 참고 (3건 수정, 2건 칭찬)
+- 한 일: `2aaab6f`까지 pull --ff-only 후 P0-2만 구현했다. 고객 전용 이름 우선/공용
+  폴백을 Telegram 토큰·chat ID·웹훅 URL 및 env 헤더에 적용했다. 타 고객 접미사를
+  명시하는 설정/헤더 우회는 로딩과 실행 경계에서 차단한다. 잡 복사본의 이름만 바꿔
+  A→B→A 실행 중 원본 잡/공용 환경변수가 섞이지 않는다. validate는 실제 선택한
+  이름과 전용/폴백/누락만 표시한다. 예시 3개의 disabled 상태를 유지했다.
+- 새로 노출한 YAML 옵션: 필수 `client_id`. 대문자로 시작하는 영문 대문자·숫자·단일 `_`,
+  최대 64자. 기존 잡에도 추가해야 한다. `sinks.*_env`와 `env:` 헤더는 기존 옵션 그대로다.
+- 새 환경변수 (양쪽 등록 여부): ACME 예시용 `TELEGRAM_BOT_TOKEN__ACME`,
+  `TELEGRAM_CHAT_ID__ACME`, `SLACK_WEBHOOK_URL__ACME`, `CLIENT_ADMIN_TOKEN__ACME`를
+  `.env.example`과 `.github/workflows/botkit.yml` env 양쪽에 등록했다. 값은 넣지 않았다.
+  다른 고객 ID를 추가할 때에도 두 곳의 이름 매핑과 실제 Secrets 등록이 필요하다.
+- 기존 테스트를 수정했다면 어느 것을 왜: `test_botkit_{jobspec,llm,runner,history}.py`
+  합성 잡 fixture 및 jobspec의 합성 YAML에 새 필수 `client_id`만 추가했다.
+  기존 assertion은 수정/삭제하지 않았다. 계약 변경 이유는 기능 커밋 메시지에 명시했다.
+- 검증: 로컬 Ruff 통과 / pytest **260 passed (신규 45)**. 원본 215개도 통과했다.
+  [기능 커밋 CI (Python 3.11)](https://github.com/NAMSOO-KIM/auto-cpna/actions/runs/35675449477)는
+  Ruff 및 테스트 **260개 통과**를 확인했다. 실제 외부 API 대신 합성 데이터와 MockTransport만 사용했다.
+- 사람 승인이 필요한 것: 실제 유료 Claude 호출, test-telegram/고객 채널 발송,
+  고객 시스템 연결, Secrets 등록 및 운영 YAML/배포 변경. 이번에는 수행하지 않았다.
+  변경/검증/배포/이슈/롤백은 [P0-2 릴리스 기록](docs/releases/p0-2.md)에 정리했다.
+- 리뷰어가 봐야 할 판단 지점:
+  - P0-1 리뷰의 ledger_error/발송 유지, 캐시 usage 보존/비용 null,
+    Telegram description 복원 코드는 변경하지 않았다.
+  - `history.directory`는 자동 분리하지 않았다. 기존 장부/report/백업 경로가 끊기지
+    않도록 유지하고, 다중 고객은 YAML의 기존 옵션으로 `.botkit/ACME/history`를 지정한다.
+  - 공용 폴백은 요구된 호환성이다. 토큰/채팅 ID가 각각 폴백할 수 있으며
+    `__` 없는 별칭은 공용으로 취급한다. namespace 참조 차단을 OS/계정 보안 격리로
+    과장하지 않았다. 고객사 1곳 = 저장소 1개 권장과 공용 시크릿/장애 전파 위험을 문서화했다.
+  - ANTHROPIC_API_KEY와 운영자 알림 설정은 공용으로 유지한다. 전용 고객 토큰만
+    넣어도 운영자 알림용 공용 봇 토큰/OPS chat은 별도 준비해야 한다.
+  - 작업 큐는 리뷰어가 갱신하므로 그대로 두었다. P0-3 이후 작업은 시작하지 않았다.
