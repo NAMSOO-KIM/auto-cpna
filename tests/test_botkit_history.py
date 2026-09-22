@@ -220,7 +220,10 @@ def test_invalid_pricing_is_not_silent_or_leaked(tmp_path, bad):
     path.write_text(f'source: test\nchecked_on: "2026-09-22"\nmodels:\n  x:\n    input_usd_per_million: {bad}\n    output_usd_per_million: 1\n')
     with pytest.raises(PricingError) as exc:
         load_price(path, "x")
-    assert bad not in str(exc.value)
+    # 메시지에 파일 경로는 있어도 된다(어느 단가표가 문제인지 알아야 한다).
+    # 검사 대상은 '붙여넣은 값이 그대로 새는가'이므로 경로는 빼고 본다 -
+    # tmp 경로에 "-1" 같은 문자열이 우연히 들어 있어 오탐이 난다.
+    assert bad not in str(exc.value).replace(str(path), "<pricing_file>")
 
 
 def test_history_preflight_failure_never_calls_llm(job, monkeypatch):
@@ -232,16 +235,32 @@ def test_history_preflight_failure_never_calls_llm(job, monkeypatch):
         runner.run_job(job, now=NOW)
 
 
-def test_disk_failure_after_delivery_is_visible_and_not_marked(job, delivery, monkeypatch, tmp_path):
-    """발송 뒤 디스크가 실패해도 장부와 중복 방지가 성공했다고 거짓 보고하지 않는다."""
+def test_disk_failure_after_delivery_is_visible_but_never_resends(job, delivery, monkeypatch, tmp_path):
+    """발송 뒤 장부가 실패해도 (1) 조용히 넘기지 않고 (2) 고객에게 두 번 보내지 않는다.
+
+    이력 실패로 실행 상태를 failed로 뒤집으면 run_due가 state를 기록하지 않아,
+    다음 tick에 같은 회차가 고객에게 재발송된다. 이미 도착한 메시지는 되돌릴 수
+    없으므로 '장부 정합성'을 위해 중복 발송을 감수하는 거래는 성립하지 않는다.
+    장부 누락은 ledger_error와 종료 코드로 운영자에게만 올린다.
+    """
     def fail(*args):
         raise history.HistoryError("이력 저장 실패")
 
     monkeypatch.setattr(history, "append", fail)
     path = tmp_path / "state.json"
     result, = runner.run_due([job], now=NOW, state_path=path, client=client())
-    assert result.failed and "이력 저장 실패" in result.reason
-    assert state.load_state(path) == {} and len(delivery) == 1
+
+    # 발송은 성공했고 그 사실을 숨기지 않는다
+    assert result.status == "ok" and len(delivery) == 1
+    # 장부 누락은 드러나야 한다 (운영자 알림 경로)
+    assert "이력 저장 실패" in result.ledger_error and result.needs_operator
+    assert result.history_id == ""
+
+    # 같은 회차에 다시 깨어나도 재발송하지 않는다
+    again, = runner.run_due(
+        [job], now=NOW + dt.timedelta(minutes=20), state_path=path, client=client()
+    )
+    assert again.status == "skipped" and len(delivery) == 1
 
 
 def test_month_is_scheduled_utc_month_not_completion_month(job, delivery):
@@ -333,12 +352,23 @@ def test_empty_llm_text_is_not_marked_as_delivered(job, delivery):
 
 
 def test_unexpected_cache_usage_is_not_underpriced(job, delivery):
-    """미지원 캐시 요금을 일반 입력 요금만으로 계산해 원가를 낮추면 안 된다."""
+    """미지원 캐시 요금을 일반 입력 요금만으로 계산해 원가를 낮추면 안 된다.
+
+    다만 비용을 모른다고 발송을 막지는 않는다. 플랫폼이 암시적 캐싱을 켜는 날
+    모든 고객의 보고가 동시에 멈추는 쪽이 훨씬 큰 사고다. 토큰 수는 남기고
+    비용만 미확인으로 두어 청구서 대조 대상으로 표시한다.
+    """
     response = client().messages.create()
     response.usage.cache_read_input_tokens = 100
-    with pytest.raises(llm.GenerationError, match="캐시"):
-        runner.run_job(job, now=NOW, client=SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: response)))
-    assert records(job)[0].estimated_cost_usd is None and not delivery
+    fake = SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: response))
+
+    result = runner.run_job(job, now=NOW, client=fake)
+
+    assert result.status == "ok" and len(delivery) == 1
+    record, = records(job)
+    assert record.estimated_cost_usd is None       # 낮춰 잡지 않는다
+    assert record.cache_tokens_seen is True        # 청구서와 대조할 표식
+    assert (record.input_tokens, record.output_tokens) == (1000, 200)  # 토큰은 버리지 않는다
 
 
 def test_bad_telegram_ack_is_failure(job, monkeypatch):

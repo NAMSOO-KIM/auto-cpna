@@ -44,6 +44,19 @@ def split_message(text: str, limit: int = CHUNK_LIMIT) -> list[str]:
     return [chunk for chunk in chunks if chunk]
 
 
+def _error_detail(response: httpx.Response) -> str:
+    """텔레그램이 알려준 실패 사유("chat not found" 등).
+
+    봇 토큰은 URL에만 있고 응답 바디에는 없다. 그래서 httpx 예외 문자열은
+    가리되(send의 except 참고) 이 description은 그대로 보여준다 - 납품 직후
+    장애의 실제 원인이 대부분 이 한 줄에 들어 있다.
+    """
+    try:
+        return str(response.json().get("description") or response.text)[:300]
+    except ValueError:
+        return response.text[:300]
+
+
 def _post(client: httpx.Client, url: str, payload: dict) -> httpx.Response:
     """429(rate limit)만 한 번 재시도한다. 여러 청크를 연속 발송할 때 걸린다."""
     response = client.post(url, json=payload)
@@ -85,7 +98,8 @@ def send(sink: TelegramSink, text: str, header: str = "") -> list[int]:
                     response = _post(client, url, payload)
                 if response.status_code != 200:
                     raise TelegramSendError(
-                        f"텔레그램 발송 실패 (status={response.status_code}). "
+                        f"텔레그램 발송 실패 (status={response.status_code}): "
+                        f"{_error_detail(response)}. "
                         f"봇 초대 여부와 {sink.chat_id_env} 설정을 확인하세요.", message_ids
                     )
                 data = response.json()

@@ -37,6 +37,9 @@ class HistoryRecord(Strict):
     skip_reason: Literal["empty", "already_ran"] | None = None
     model: str
     pricing: ModelPrice | None = None
+    # 캐시 과금이 섞여 단가 계산 범위를 벗어난 실행. estimated_cost_usd는 None이
+    # 되므로, 청구서와 대조할 때 이 건수를 먼저 본다.
+    cache_tokens_seen: bool = False
 
     @field_validator("fire_at", "finished_at")
     @classmethod

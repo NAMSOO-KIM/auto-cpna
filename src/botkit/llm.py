@@ -19,6 +19,9 @@ class GenerationResult:
     text: str
     input_tokens: int | None
     output_tokens: int | None
+    # 캐시 과금이 섞인 응답. 단가표가 캐시 단가를 모르므로 비용은 '미확인'으로
+    # 남기되, 발송은 막지 않는다 (아래 generate의 주석 참고).
+    cache_tokens_seen: bool = False
 
 
 class GenerationError(RuntimeError):
@@ -130,8 +133,19 @@ def generate(job: JobSpec, rows: list[dict], now: dt.datetime, client=None) -> G
         if owned:
             client.close()
     usage = getattr(response, "usage", None)
+    # 현재 요청은 캐시/도구를 쓰지 않으므로 캐시 토큰은 0이어야 한다. 그래도 0이
+    # 아닌 응답이 오면(플랫폼이 암시적 캐싱을 켜는 경우 등) 비용만 '미확인'으로
+    # 표시하고 보고는 그대로 보낸다. 회계 정확도를 위해 전 고객 발송을 멈추는
+    # 것은 거래가 거꾸로다 - 모든 잡이 같은 날 동시에 조용히 멈춘다.
+    cache_tokens_seen = any(
+        _token_count(usage, key) not in (None, 0)
+        for key in ("cache_creation_input_tokens", "cache_read_input_tokens")
+    )
     result = GenerationResult(
-        "", _token_count(usage, "input_tokens"), _token_count(usage, "output_tokens")
+        "",
+        _token_count(usage, "input_tokens"),
+        _token_count(usage, "output_tokens"),
+        cache_tokens_seen=cache_tokens_seen,
     )
     try:
         text = extract_text(response)
@@ -139,8 +153,6 @@ def generate(job: JobSpec, rows: list[dict], now: dt.datetime, client=None) -> G
         raise GenerationError(str(exc), result) from exc
     if result.input_tokens is None or result.output_tokens is None:
         raise GenerationError("Claude usage가 없거나 잘못되었습니다. 비용을 확인하세요.", result)
-    # 현재 요청은 캐시/도구를 쓰지 않는다. 알 수 없는 별도 과금을 0원으로 숨기지 않는다.
-    if any(getattr(usage, key, 0) for key in ("cache_creation_input_tokens", "cache_read_input_tokens")):
-        raise GenerationError("캐시 사용량은 현재 단가 계산 범위 밖입니다.",
-                              GenerationResult("", None, None))
-    return GenerationResult(text, result.input_tokens, result.output_tokens)
+    return GenerationResult(
+        text, result.input_tokens, result.output_tokens, cache_tokens_seen=cache_tokens_seen
+    )

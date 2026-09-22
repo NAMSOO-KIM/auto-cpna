@@ -28,10 +28,19 @@ class RunResult:
     output_tokens: int | None = 0
     estimated_cost_usd: Decimal | None = Decimal(0)
     history_id: str = ""
+    # 장부를 못 남긴 실행. status는 건드리지 않는다 - 발송이 끝난 실행을 회계
+    # 실패로 뒤집으면 state에 기록되지 않아 다음 tick에 같은 회차가 고객에게
+    # 또 간다. 운영자에게는 CLI 종료 코드로 알린다.
+    ledger_error: str = ""
 
     @property
     def failed(self) -> bool:
         return self.status == "failed"
+
+    @property
+    def needs_operator(self) -> bool:
+        """운영자가 봐야 하는 실행. 실패 또는 장부 누락."""
+        return self.failed or bool(self.ledger_error)
 
 
 def run_job(
@@ -52,6 +61,7 @@ def run_job(
     stage = "preflight"
     error = None
     ready = False
+    cache_tokens_seen = False
     try:
         if job.history.enabled:
             history.prepare(job.history.directory, fire_at)
@@ -70,6 +80,7 @@ def run_job(
         generated = llm.generate(job, rows, now, client=client)
         result.input_tokens = generated.input_tokens
         result.output_tokens = generated.output_tokens
+        cache_tokens_seen = generated.cache_tokens_seen
         result.output = generated.text
         if dry_run:
             result.status = "dry-run"
@@ -86,6 +97,7 @@ def run_job(
         if isinstance(exc, llm.GenerationError):
             result.input_tokens = exc.result.input_tokens
             result.output_tokens = exc.result.output_tokens
+            cache_tokens_seen = exc.result.cache_tokens_seen
         elif isinstance(exc, MissingSecretError) and stage == "llm":
             result.input_tokens = result.output_tokens = 0
         if isinstance(exc, DeliveryError):
@@ -93,7 +105,9 @@ def run_job(
             result.deliveries = exc.result.summaries
         raise
     finally:
-        if result.input_tokens is None or result.output_tokens is None:
+        if result.input_tokens is None or result.output_tokens is None or cache_tokens_seen:
+            # 캐시 과금은 이 단가표의 계산 범위 밖이다. 0원으로 숨기지 않고
+            # 비용 미확인으로 남긴다 (토큰 수는 그대로 기록한다).
             result.estimated_cost_usd = None
         elif price is not None:
             result.estimated_cost_usd = price.estimate(result.input_tokens, result.output_tokens)
@@ -108,9 +122,18 @@ def run_job(
                 message_ids=result.message_ids, error=error,
                 skip_reason="empty" if result.status == "skipped" else None,
                 model=job.prompt.model, pricing=price,
+                cache_tokens_seen=cache_tokens_seen,
             )
-            history.append(job.history.directory, record)
-            result.history_id = record.history_id
+            try:
+                history.append(job.history.directory, record)
+                result.history_id = record.history_id
+            except history.HistoryError as exc:
+                # 발송이 끝난 뒤의 장부 실패로 실행 상태를 뒤집지 않는다. 뒤집으면
+                # run_due가 state를 기록하지 않아 다음 tick에 같은 회차가 고객에게
+                # 다시 발송된다 - 회계를 지키려다 고객 경험을 망치는 거래다.
+                # 발송 전 단계(preflight의 history.prepare)의 실패는 그대로 실행을
+                # 막으므로, 기록 없이 유료 호출이 나가는 경로는 여전히 없다.
+                result.ledger_error = str(exc)
 
 
 def run_due(
@@ -142,14 +165,19 @@ def run_due(
             if state.already_ran(current, job.name, fire_at):
                 result = RunResult(job.name, "skipped", reason=f"{fire_at:%Y-%m-%d %H:%M} 분은 이미 발송됨")
                 if job.history.enabled:
-                    history.prepare(job.history.directory, fire_at)
                     record = history.HistoryRecord(
                         job_name=job.name, fire_at=fire_at,
                         finished_at=dt.datetime.now(dt.timezone.utc), status="skipped",
                         row_count=0, skip_reason="already_ran", model=job.prompt.model,
                     )
-                    history.append(job.history.directory, record)
-                    result.history_id = record.history_id
+                    # 유료 호출도 발송도 없는 경로다. 장부를 못 남긴다고 '건너뜀'을
+                    # '실패'로 바꾸면, 운영자는 발송 사고가 난 것으로 읽는다.
+                    try:
+                        history.prepare(job.history.directory, fire_at)
+                        history.append(job.history.directory, record)
+                        result.history_id = record.history_id
+                    except history.HistoryError as exc:
+                        result.ledger_error = str(exc)
                 results.append(result)
                 continue
             result = run_job(job, dry_run=dry_run, now=now, client=client, fire_at=fire_at)

@@ -142,11 +142,15 @@ def run(
             click.echo(f"  - {line}")
         if result.history_id:
             click.echo(f"  - history_id={result.history_id}")
+        if result.ledger_error:
+            # 발송은 됐지만 장부가 비었다. 상태를 실패로 바꾸면 다음 tick에
+            # 중복 발송이 되므로, 알림은 종료 코드로만 올린다.
+            click.echo(f"  - 이력 저장 실패(발송은 완료): {result.ledger_error}")
         if dry_run and result.output:
             click.echo("--- 생성 결과 ---")
             click.echo(result.output)
 
-    if any(result.failed for result in results):
+    if any(result.needs_operator for result in results):
         sys.exit(1)
 
 

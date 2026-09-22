@@ -35,9 +35,23 @@ def load_price(path: str | Path, model: str) -> ModelPrice:
     try:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         table = PriceTable.model_validate(data)
-    except (OSError, ValueError, yaml.YAMLError, ValidationError) as exc:
-        # YAML 원문에는 잘못 붙여넣은 시크릿도 있을 수 있어 검증 예외를 출력하지 않는다.
-        raise PricingError("단가표를 읽을 수 없습니다. history.pricing_file과 단가를 확인하세요.") from exc
+    except ValidationError as exc:
+        # 값이 아니라 '어느 키가 왜 틀렸는지'만 보여준다. 이 파일은 커밋되는
+        # 공개 단가표라 시크릿이 들어갈 자리가 없지만, 원문을 그대로 쏟아내는
+        # 습관은 다른 YAML을 지정했을 때 사고가 된다.
+        details = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc']) or '(최상위)'}: {err['msg']}"
+            for err in exc.errors()
+        )
+        raise PricingError(f"단가표 형식이 잘못되었습니다 ({path}) - {details}") from exc
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        raise PricingError(
+            f"단가표를 읽을 수 없습니다 ({path}): {type(exc).__name__}. "
+            "history.pricing_file 경로를 확인하세요."
+        ) from exc
     if model not in table.models:
-        raise PricingError("사용 모델의 단가가 없습니다. config/pricing.yaml에 모델을 등록하세요.")
+        raise PricingError(
+            f"모델 '{model}'의 단가가 {path}에 없습니다. "
+            f"등록된 모델: {sorted(table.models)}"
+        )
     return table.models[model]
