@@ -7,7 +7,51 @@ config/jobs/*.yaml에 절대 들어가지 않도록, YAML에는 값이 아니라
 from __future__ import annotations
 
 import os
+import re
+from dataclasses import dataclass
 from pathlib import Path
+
+
+CLIENT_ID_RE = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*\Z")
+ENV_NAME_RE = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*\Z")
+
+
+def check_client_id(client_id: str) -> str:
+    """대소문자/구분자 정규화로 서로 다른 고객이 같은 namespace가 되는 일을 막는다."""
+    if not isinstance(client_id, str) or len(client_id) > 64 or not CLIENT_ID_RE.fullmatch(client_id):
+        raise ValueError("client_id는 대문자로 시작하는 영문 대문자/숫자/단일 _ 조합(64자 이하)입니다.")
+    return client_id
+
+
+def client_env_candidates(name: str, client_id: str) -> tuple[str, str]:
+    """이 고객의 이름과 공용 이름만 만든다. 다른 고객 이름은 조회조차 하지 않는다."""
+    check_client_id(client_id)
+    base, separator, owner = name.partition("__")
+    if not ENV_NAME_RE.fullmatch(base) or len(base) > 128:
+        raise ValueError("시크릿 설정에는 유효한 대문자 환경변수 이름을 사용하세요.")
+    if separator and owner != client_id:
+        raise ValueError("다른 고객의 시크릿 namespace를 참조할 수 없습니다.")
+    return f"{base}__{client_id}", base
+
+
+@dataclass(frozen=True)
+class SecretSelection:
+    """진단용 메타데이터에 값은 넣지 않는다 (repr/validate 로그에도 값 노출 없음)."""
+
+    scoped_name: str
+    shared_name: str
+    selected_name: str | None
+
+    @property
+    def fallback(self) -> bool:
+        return self.selected_name is not None and self.selected_name == self.shared_name
+
+
+def select_client_secret(name: str, client_id: str) -> SecretSelection:
+    scoped, shared = client_env_candidates(name, client_id)
+    # Actions에서 등록하지 않은 Secrets도 빈 문자열 env로 들어오므로 공백도 없는 값으로 본다.
+    selected = next((key for key in (scoped, shared) if os.environ.get(key, "").strip()), None)
+    return SecretSelection(scoped, shared, selected)
 
 
 class MissingSecretError(RuntimeError):

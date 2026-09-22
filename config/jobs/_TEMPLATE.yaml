@@ -6,14 +6,17 @@
 #   3) source         - 수집할 곳 (google_sheet / rss / http_json / static)
 #   4) prompt         - 고객 업무 맥락 (여기가 납품의 90%다)
 #   5) sinks          - 받을 채널 (환경변수 '이름'만 적는다. 토큰은 Actions Secrets에)
+#   필수 client_id   - 고객 식별자. 전용 시크릿 BASE__CLIENT_ID를 .env/Actions env 양쪽에 선언
+#                     없으면 BASE 공용 값으로 폴백하므로 botkit validate 출력에서 확인
 
 title: "고객사명 - 업무 요약 봇"
+client_id: ACME  # 필수: 고객별 대문자 식별자. 시크릿은 BASE__ACME 우선, 없으면 BASE
 enabled: true
 
 # 선택: 기본값으로도 이력/비용이 기록된다. 고객별 Python 수정은 필요 없다.
 history:
   enabled: true
-  directory: ".botkit/history"          # Actions에서는 .botkit/ 내부만 사용
+  directory: ".botkit/history"          # 다중 고객은 .botkit/ACME/history 등으로 명시 가능
   pricing_file: "config/pricing.yaml"   # 플랫폼 공통 단가표
 
 schedule:

@@ -8,13 +8,14 @@ from pathlib import Path
 
 import click
 
-from botkit.jobspec import JOBS_DIR, JobConfigError, JobSpec, TelegramSink, load_job, load_jobs
+from botkit.jobspec import JOBS_DIR, JobConfigError, TelegramSink, load_job, load_jobs
 from botkit.schedule import DEFAULT_TICK_MINUTES, describe, due_at
 from botkit.settings import load_env_file
 from botkit.sinks import telegram
 from botkit.runner import run_due, run_job
 from botkit.history import HistoryError, read_month, summarize
 from botkit.pricing import PricingError, load_price
+from botkit.secrets import bind_job_secrets, inspect_job_secrets
 
 jobs_dir_option = click.option(
     "--jobs-dir",
@@ -22,19 +23,6 @@ jobs_dir_option = click.option(
     default=None,
     help=f"잡 YAML 디렉터리 (기본: {JOBS_DIR})",
 )
-
-
-def _required_env_names(job: JobSpec) -> list[str]:
-    names = ["ANTHROPIC_API_KEY"]
-    for sink in job.sinks:
-        if isinstance(sink, TelegramSink):
-            names += [sink.bot_token_env, sink.chat_id_env]
-        else:
-            names.append(sink.url_env)
-    for value in getattr(job.source, "headers", {}).values():
-        if value.startswith("env:"):
-            names.append(value[len("env:") :].strip())
-    return sorted(set(names))
 
 
 @click.group()
@@ -55,7 +43,7 @@ def list_jobs(jobs_dir: Path | None) -> None:
         return
     for job in jobs:
         flag = " " if job.enabled else "x"
-        click.echo(f"[{flag}] {job.name}: {job.title}")
+        click.echo(f"[{flag}] {job.name}: {job.title} (client_id={job.client_id})")
         click.echo(f"      스케줄: {describe(job.schedule)}")
         click.echo(f"      소스: {job.source.type} -> 싱크: {', '.join(s.type for s in job.sinks)}")
 
@@ -73,7 +61,21 @@ def validate(jobs_dir: Path | None) -> None:
     missing_total = 0
     pricing_errors = 0
     for job in jobs:
-        missing = [name for name in _required_env_names(job) if not os.environ.get(name, "").strip()]
+        missing = []
+        click.echo(f"{job.name}: client_id={job.client_id}")
+        llm_present = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+        click.echo(f"  Claude: ANTHROPIC_API_KEY ({'공용' if llm_present else '누락'})")
+        if not llm_present:
+            missing.append("ANTHROPIC_API_KEY")
+        for reference in inspect_job_secrets(job):
+            selection = reference.selection
+            if selection.selected_name is None:
+                names = f"{selection.scoped_name} / {selection.shared_name}"
+                missing.append(names)
+                click.echo(f"  {reference.location}: 누락 ({names})")
+            else:
+                mode = "공용 폴백" if selection.fallback else "고객 전용"
+                click.echo(f"  {reference.location}: {selection.selected_name} ({mode})")
         missing_total += len(missing)
         status = "OK" if not missing else f"환경변수 누락: {', '.join(missing)}"
         click.echo(f"{job.name}: 스키마 OK / {status}")
@@ -159,7 +161,7 @@ def run(
 @jobs_dir_option
 def test_telegram(job_name: str, jobs_dir: Path | None) -> None:
     """납품 직전 확인용: 고객 채팅방으로 테스트 메시지 1건 발송."""
-    job = load_job(job_name, jobs_dir)
+    job = bind_job_secrets(load_job(job_name, jobs_dir))
     sinks = [s for s in job.sinks if isinstance(s, TelegramSink)]
     if not sinks:
         click.echo(f"{job.name}에는 텔레그램 싱크가 없습니다.")

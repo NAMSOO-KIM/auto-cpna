@@ -18,6 +18,7 @@ from botkit.sinks import DeliveryError, DeliveryResult, telegram
 NOW = dt.datetime(2026, 9, 21, 23, 5, tzinfo=dt.timezone.utc)
 PRICING = Path(__file__).resolve().parents[1] / "config" / "pricing.yaml"
 BASE = {
+    "client_id": "ACME",
     "title": "합성 데모", "schedule": {"times": ["08:00"]},
     "source": {"type": "static", "rows": [{"문의": "가상 배송 문의"}]},
     "prompt": {"system": "초안만", "user_template": "{rows}"},

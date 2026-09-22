@@ -5,6 +5,7 @@
 #   A: 접수일시 / B: 고객명 / C: 문의내용 / D: 답변초안(비워둠) / E: 처리상태
 #   공유 설정 -> "링크가 있는 모든 사용자 - 뷰어"
 title: "CS 문의 답변 초안"
+client_id: ACME
 enabled: false
 
 schedule:

@@ -9,6 +9,7 @@ from botkit.jobspec import parse_job
 NOW = dt.datetime(2026, 9, 21, 23, 5, tzinfo=dt.timezone.utc)  # KST 09-22 08:05
 
 BASE = {
+    "client_id": "ACME",
     "title": "테스트 봇",
     "schedule": {"times": ["08:00"]},
     "source": {"type": "static", "rows": [{"a": 1}]},

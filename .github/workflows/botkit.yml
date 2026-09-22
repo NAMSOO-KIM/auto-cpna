@@ -36,6 +36,11 @@ jobs:
       # 고객사별 추가 시크릿(슬랙 웹훅, 어드민 토큰 등)은 아래에 이어서 선언한다.
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       CLIENT_ADMIN_TOKEN: ${{ secrets.CLIENT_ADMIN_TOKEN }}
+      # client_id=ACME 예시. 새 고객의 전용 이름도 .env.example과 여기에 함께 등록한다.
+      TELEGRAM_BOT_TOKEN__ACME: ${{ secrets.TELEGRAM_BOT_TOKEN__ACME }}
+      TELEGRAM_CHAT_ID__ACME: ${{ secrets.TELEGRAM_CHAT_ID__ACME }}
+      SLACK_WEBHOOK_URL__ACME: ${{ secrets.SLACK_WEBHOOK_URL__ACME }}
+      CLIENT_ADMIN_TOKEN__ACME: ${{ secrets.CLIENT_ADMIN_TOKEN__ACME }}
       STATE_FILE: .botkit/state.json
       # 쉘 코드에 사용자 입력을 직접 보간하지 않는다.
       BOTKIT_JOB: ${{ inputs.job }}

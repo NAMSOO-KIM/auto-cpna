@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from botkit.jobspec import JobSpec, TelegramSink, WebhookSink
 from botkit.llm import render
+from botkit.secrets import bind_job_secrets
 from botkit.sinks import telegram, webhook
 
 
@@ -43,6 +44,7 @@ def deliver(job: JobSpec, text: str, now: dt.datetime) -> DeliveryResult:
     싱크 하나가 실패하면 즉시 올린다 - 고객 채널로 보고가 안 갔다는 사실은
     조용히 삼키면 안 되고, 워크플로의 실패 알림으로 운영자에게 닿아야 한다.
     """
+    job = bind_job_secrets(job)
     results = DeliveryResult()
     for sink in job.sinks:
         try:

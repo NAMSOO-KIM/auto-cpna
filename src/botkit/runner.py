@@ -11,6 +11,7 @@ from botkit.jobspec import JobSpec
 from botkit.pricing import load_price
 from botkit.schedule import DEFAULT_TICK_MINUTES, due_at
 from botkit.settings import MissingSecretError
+from botkit.secrets import bind_job_secrets
 from botkit.sinks import DeliveryError, deliver
 from botkit.sources import fetch_rows
 
@@ -63,6 +64,7 @@ def run_job(
     ready = False
     cache_tokens_seen = False
     try:
+        job = bind_job_secrets(job)
         if job.history.enabled:
             history.prepare(job.history.directory, fire_at)
             ready = True

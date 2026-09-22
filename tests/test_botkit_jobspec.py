@@ -5,6 +5,7 @@ import pytest
 from botkit.jobspec import JOBS_DIR, JobConfigError, load_job, load_jobs, parse_job
 
 MINIMAL = {
+    "client_id": "ACME",  # P0-2 필수 계약. 기존 검증 내용은 유지한다.
     "title": "테스트 봇",
     "schedule": {"times": ["08:00"]},
     "source": {"type": "static", "rows": [{"a": 1}]},
@@ -56,6 +57,7 @@ def test_load_jobs_skips_underscore_prefixed_templates(tmp_path):
     (tmp_path / "_TEMPLATE.yaml").write_text("title: x", encoding="utf-8")
     (tmp_path / "acme.yaml").write_text(
         "title: 에이컴\n"
+        "client_id: ACME\n"
         "schedule: {times: ['08:00']}\n"
         "source: {type: static, rows: [{a: 1}]}\n"
         "prompt: {system: s, user_template: '{rows}'}\n"

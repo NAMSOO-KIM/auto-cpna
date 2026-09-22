@@ -10,6 +10,7 @@ from botkit.sinks import DeliveryResult
 NOW = dt.datetime(2026, 9, 21, 23, 5, tzinfo=dt.timezone.utc)  # KST 09-22 08:05
 
 JOB = {
+    "client_id": "ACME",
     "title": "테스트 봇",
     "schedule": {"times": ["08:00"]},
     "source": {"type": "static", "rows": [{"문의": "배송 언제 오나요"}]},

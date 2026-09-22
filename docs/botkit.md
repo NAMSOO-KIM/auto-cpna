@@ -43,6 +43,7 @@ botkit run --job acme           # 실제 발송
 
 ```yaml
 title: "고객사명 - 업무 요약 봇"     # 고객이 보는 이름
+client_id: ACME                    # 필수: 고객 전용 시크릿 접미사
 enabled: true
 
 schedule:                          # 고객사 현지 시각 기준
@@ -78,6 +79,65 @@ Actions에서 `history.directory`는 반드시 `.botkit/` 내부여야 한다. �
 키를 하나라도 틀리게 적으면 로드 단계에서 실패한다(`extra="forbid"`). `sytem:`처럼
 한 글자 틀린 키가 조용히 무시되면 "프롬프트를 고쳤는데 결과가 그대로"인 상황이
 벌어지기 때문에 일부러 좁게 잡았다.
+
+### 고객사별 시크릿 (P0-2)
+
+| YAML 키 | 기본값 | 규칙 |
+| --- | --- | --- |
+| `client_id` | **필수, 기본값 없음** | 대문자로 시작하는 영문 대문자·숫자·단일 `_`, 최대 64자. 예: `ACME`, `SHOP_2` |
+| `sinks[].bot_token_env` | `TELEGRAM_BOT_TOKEN` | `<기본명>__<client_id>` 우선, 없거나 공백이면 `<기본명>` 폴백 |
+| `sinks[].chat_id_env` | `TELEGRAM_CHAT_ID` | 동일 규칙 |
+| `sinks[].url_env` | webhook에서 필수 | 예: `SLACK_WEBHOOK_URL__ACME` → `SLACK_WEBHOOK_URL` |
+| `source.headers.*`, `sinks[].headers.*`의 `env:NAME` | 기존 옵션 | 전용 우선/공용 폴백 적용, 다른 고객의 `__CLIENT_ID` 직접 참조 금지 |
+
+기본 환경변수 이름은 대문자로 시작하는 영문 대문자·숫자·단일 `_` 조합(128자 이하)이다.
+`__`는 고객 구분자로 예약한다. YAML에 값 대신 기본 이름을 적으면 된다.
+자기 접미사를 명시한 `TELEGRAM_BOT_TOKEN__ACME`도 같은 조회 규칙을 사용한다.
+`client_id: ACME`에서 `TELEGRAM_BOT_TOKEN__OTHER`를 지정하면, 그 값이 없어도
+설정 오류다. 토큰 필드뿐 아니라 채팅 ID·웹훅·HTTP 헤더 우회도 검사한다.
+대소문자나 공백을 자동 보정하지 않아 `acme`와 `ACME`가 조용히 같은 고객이 되지 않는다.
+
+`botkit validate`는 실제 사용할 **이름만** 출력한다. 값·토큰·채팅 ID·웹훅 URL은 출력하지 않는다.
+
+```text
+acme: client_id=ACME
+  Claude: ANTHROPIC_API_KEY (공용)
+  sinks[0].bot_token_env: TELEGRAM_BOT_TOKEN__ACME (고객 전용)
+  sinks[0].chat_id_env: TELEGRAM_CHAT_ID (공용 폴백)
+```
+
+둘 다 없으면 `누락 (TELEGRAM_BOT_TOKEN__ACME / TELEGRAM_BOT_TOKEN)`처럼 조회 후보를
+표시하고 exit 1로 종료한다. `run`, `run --due-now`, `test-telegram`도 같은 선택 함수를 사용한다.
+실행 시 잡 복사본의 환경변수 **이름**만 바꾸며 프로세스 공용 환경변수는 덮어쓰지 않는다.
+
+**기존 잡 이전:** 모든 실제 잡 YAML에 `client_id`를 한 줄 추가한다. 공용 시크릿 값은
+그대로 쓸 수 있다. 필수 식별자 추가와 시크릿 폴백 호환성은 별개이므로 ID 누락을
+파일명에서 추측하지 않는다. 템플릿과 비활성 예시 3개는 가상 고객 `ACME`로 갱신했다.
+
+**권장 운영은 고객사 1곳 = 저장소 1개**다. 클론한 저장소에서 고객 YAML 한 장과 Secrets를
+설정하면 된다. 전용 이름을 쓸 경우 `.env.example`과 Actions `env:`에 이름만 함께 선언한다.
+현재 ACME용 Telegram 토큰/채팅 ID, Slack URL, 관리자 API 헤더 토큰 4개 이름은 양쪽에 제공한다.
+다른 고객 ID를 추가할 때도 두 곳에 `<기본명>__<새 ID>`를 함께 선언해야 한다.
+GitHub Secrets에 등록하는 것만으로 임의의 이름이 러너 환경에 자동 노출되지는 않는다.
+이는 기존 배포 설정 편집이며 고객마다 새 Python이나 새 커넥터 파일을 만들 필요는 없다.
+
+한 저장소에서 여러 고객을 운영할 때의 제한:
+
+- 공용 폴백은 의도적으로 공유되는 자격증명이다. 전용 값이 빠지면 공용으로 되돌아간다.
+  토큰과 채팅 ID는 각각 선택하므로 혼합 설정도 가능하다. 모든 고객의 `validate` 출력에서
+  토큰·채팅 ID·URL의 전용 선택을 확인한다. 공용 이름에 특정 고객의 비밀을 넣지 않는다.
+- `__` 없는 사용자 정의 별칭은 공용 이름으로 취급한다. 이 기능은 다른 고객 namespace의
+  **참조 차단**이며, 저장소 쓰기 권한/환경변수 접근 권한을 가진 사용자 간 OS 보안 경계가 아니다.
+  YAML의 `client_id` 자체를 다른 고객으로 바꿀 수 있는 사람은 신뢰된 운영자여야 한다.
+- `ANTHROPIC_API_KEY`는 공용 플랫폼 키로 유지한다. 운영자 알림도 기존 공용
+  `TELEGRAM_BOT_TOKEN` + `OPS_TELEGRAM_CHAT_ID`를 사용한다. 고객 전용 토큰만 설정하고
+  운영자용 공용 봇 토큰을 빼면 기존 실패 알림은 전송되지 않으므로 별도로 준비한다.
+- 잡 단위 실행 실패 격리는 유지하지만 YAML 로딩 오류, 공용 API 한도, 러너 중단,
+  상태 저장 오류는 여러 고객에 영향을 줄 수 있다. 강한 격리가 필요하면 저장소를 나눈다.
+- `history.directory` 기본값은 변경하지 않는다. 자동으로 고객별 경로로 옮기면 기존
+  월별 장부/보고서/백업 경로가 끊기기 때문이다. 다중 고객은 YAML에서
+  `.botkit/ACME/history`처럼 명시하고 report에 `--history-dir`을 지정한다.
+  기존 장부는 자동 이동하지 않는다. 잡 이름은 저장소 안에서 고유하게 정한다.
 
 ### 소스 4종
 
@@ -168,7 +228,8 @@ GitHub Actions의 cron은 UTC 고정이고, 실행이 수 분~십수 분 밀리�
 실행이 실패하면 운영자 채널로 실패 로그 링크가 날아간다. 고객이 "오늘 보고
 안 왔는데요?"라고 먼저 알려주는 상황을 막기 위한 최소 장치다.
 
-추가 Secret은 필요 없다. `BOTKIT_JOB`은 Actions 수동 입력을 쉘에 안전하게 전달하는
+P0-1은 추가 Secret이 필요 없다. P0-2의 고객 전용 이름은 위 표와 환경변수 예시를 따른다.
+`BOTKIT_JOB`은 Actions 수동 입력을 쉘에 안전하게 전달하는
 일반 환경변수이며 `.env.example`에도 명시한다. 로컬에서는 계속 `--job`을 사용한다.
 
 ### 이력 보존과 복원

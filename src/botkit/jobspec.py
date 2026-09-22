@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+
+from botkit.settings import check_client_id, client_env_candidates
 
 JOBS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "jobs"
 
@@ -176,6 +178,7 @@ class HistorySpec(Strict):
 
 class JobSpec(Strict):
     name: str = ""
+    client_id: str
     title: str
     enabled: bool = True
     schedule: ScheduleSpec
@@ -187,6 +190,36 @@ class JobSpec(Strict):
     skip_when_empty: bool = True
     max_input_chars: int = 40000
     history: HistorySpec = Field(default_factory=HistorySpec)
+
+    @field_validator("client_id")
+    @classmethod
+    def _client_id(cls, value: str) -> str:
+        return check_client_id(value)
+
+    @model_validator(mode="after")
+    def _secret_ownership(self) -> JobSpec:
+        # 싱크뿐 아니라 env: 헤더도 검사해야 다른 고객 토큰을 우회 참조할 수 없다.
+        for _, _, name, _ in job_secret_references(self):
+            client_env_candidates(name, self.client_id)
+        return self
+
+
+def job_secret_references(job: JobSpec):
+    """스키마 검증/validate/실행이 같은 시크릿 참조 목록을 사용한다.
+
+    (진단 위치, (수정할 객체 또는 dict, 필드 키), 환경변수 이름, 헤더 여부)를 반환한다.
+    시크릿 값은 읽지 않는다.
+    """
+    for index, sink in enumerate(job.sinks):
+        fields = ("bot_token_env", "chat_id_env") if isinstance(sink, TelegramSink) else ("url_env",)
+        for key in fields:
+            yield f"sinks[{index}].{key}", (sink, key), getattr(sink, key), False
+        for key, value in getattr(sink, "headers", {}).items():
+            if value.startswith("env:"):
+                yield f"sinks[{index}].headers.{key}", (sink.headers, key), value[4:].strip(), True
+    for key, value in getattr(job.source, "headers", {}).items():
+        if value.startswith("env:"):
+            yield f"source.headers.{key}", (job.source.headers, key), value[4:].strip(), True
 
 
 class JobConfigError(RuntimeError):
